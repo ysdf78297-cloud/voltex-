@@ -6,6 +6,10 @@ import UIKit
 /// the same look as the website, rebuilt with SwiftUI Canvas.
 struct BlobBackground: View {
     @AppStorage("animationsEnabled") private var animationsEnabled = true
+    @AppStorage("devBlobs") private var showBlobs = true
+    @AppStorage("devStars") private var showStars = true
+    @AppStorage("animationSpeed") private var speed = 1.0
+
     @State private var stars: [Star] = Star.make(count: 48)
     @State private var started = Date()
 
@@ -16,7 +20,8 @@ struct BlobBackground: View {
 
                 if animationsEnabled {
                     TimelineView(.animation) { timeline in
-                        layers(t: timeline.date.timeIntervalSince(started), size: geo.size)
+                        layers(t: timeline.date.timeIntervalSince(started) * max(0.2, speed),
+                               size: geo.size)
                     }
                 } else {
                     layers(t: 2, size: geo.size)
@@ -40,8 +45,8 @@ struct BlobBackground: View {
     @ViewBuilder
     private func layers(t: TimeInterval, size: CGSize) -> some View {
         ZStack {
-            blobs(t: t, size: size)
-            starfield(t: t)
+            if showBlobs { blobs(t: t, size: size) }
+            if showStars { starfield(t: t) }
         }
     }
 
@@ -278,5 +283,125 @@ private struct ShockwaveRing: View {
             .onAppear {
                 withAnimation(.easeOut(duration: 0.75)) { expanded = true }
             }
+    }
+}
+
+// MARK: - touch points
+
+final class TouchDotCenter: ObservableObject {
+    static let shared = TouchDotCenter()
+
+    struct Dot: Identifiable {
+        let id = UUID()
+        let position: CGPoint
+    }
+
+    @Published private(set) var dots: [Dot] = []
+
+    func add(at point: CGPoint) {
+        let dot = Dot(position: point)
+        dots.append(dot)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
+            self?.dots.removeAll { $0.id == dot.id }
+        }
+    }
+}
+
+struct TouchDotOverlay: View {
+    @ObservedObject private var center = TouchDotCenter.shared
+
+    var body: some View {
+        GeometryReader { geo in
+            let origin = geo.frame(in: .global).origin
+            ZStack {
+                ForEach(center.dots) { dot in
+                    TouchDot(position: CGPoint(x: dot.position.x - origin.x,
+                                               y: dot.position.y - origin.y))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
+    }
+}
+
+private struct TouchDot: View {
+    let position: CGPoint
+    @State private var expanded = false
+
+    var body: some View {
+        Circle()
+            .stroke(VoltexTheme.orange.opacity(expanded ? 0 : 0.9), lineWidth: 2)
+            .background(Circle().fill(VoltexTheme.orange.opacity(expanded ? 0 : 0.35)))
+            .frame(width: expanded ? 44 : 20, height: expanded ? 44 : 20)
+            .position(position)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.25)) { expanded = true }
+            }
+    }
+}
+
+// MARK: - FPS meter
+
+final class FPSMonitor: ObservableObject {
+    @Published private(set) var fps: Int = 0
+
+    private var link: CADisplayLink?
+    private var last = CFAbsoluteTimeGetCurrent()
+    private var frames = 0
+
+    func start() {
+        guard link == nil else { return }
+        let newLink = CADisplayLink(target: self, selector: #selector(tick))
+        newLink.add(to: .main, forMode: .common)
+        link = newLink
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+        fps = 0
+    }
+
+    @objc private func tick() {
+        frames += 1
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - last >= 0.5 {
+            fps = Int((Double(frames) / (now - last)).rounded())
+            frames = 0
+            last = now
+        }
+    }
+}
+
+struct FPSMeterOverlay: View {
+    @AppStorage("devShowFPS") private var showFPS = false
+    @StateObject private var monitor = FPSMonitor()
+
+    var body: some View {
+        VStack {
+            HStack {
+                Spacer()
+                if showFPS {
+                    Text("\(monitor.fps) FPS")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(VoltexTheme.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.black.opacity(0.75)))
+                        .overlay(Capsule().stroke(VoltexTheme.orange.opacity(0.4), lineWidth: 1))
+                        .padding(.top, 10)
+                        .padding(.trailing, 12)
+                }
+            }
+            Spacer()
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
+        .onAppear { if showFPS { monitor.start() } }
+        .onChange(of: showFPS) { newValue in
+            if newValue { monitor.start() } else { monitor.stop() }
+        }
     }
 }

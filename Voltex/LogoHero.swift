@@ -56,6 +56,7 @@ struct LetterWordmark: View {
     let text: String
 
     @AppStorage("animationsEnabled") private var animationsEnabled = true
+    @AppStorage("animationSpeed") private var speed = 1.0
     @State private var revealed = 0
     @State private var breathe = false
 
@@ -94,15 +95,16 @@ struct LetterWordmark: View {
         }
 
         revealed = 0
+        let step = 0.16 / max(0.4, min(2.5, speed))
         for index in letters.indices {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16 * Double(index) + 0.12) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + step * Double(index) + 0.12) {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) {
                     revealed = max(revealed, index + 1)
                 }
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16 * Double(letters.count) + 0.45) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + step * Double(letters.count) + 0.45) {
             withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
                 breathe = true
             }

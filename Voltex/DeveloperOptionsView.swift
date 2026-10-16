@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // MARK: - Android styling
 
@@ -253,7 +254,17 @@ struct DeveloperOptionsView: View {
     @AppStorage("voltexLayoutBounds") private var layoutBounds = false
     @AppStorage("showFakeMoneyTab") private var showFakeMoney = false
 
+    @AppStorage("animationSpeed") private var animationSpeed = 1.0
+    @AppStorage("animationsEnabled") private var animationsEnabled = true
+    @AppStorage("devBlobs") private var showBlobs = true
+    @AppStorage("devStars") private var showStars = true
+    @AppStorage("devShockwaves") private var shockwaves = true
+    @AppStorage("devTouchPoints") private var touchPoints = false
+    @AppStorage("devShowFPS") private var showFPS = false
+    @AppStorage("devKeepAwake") private var keepAwake = false
+
     @State private var path: [DevRoute] = []
+    @State private var showCertificates = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -295,6 +306,50 @@ struct DeveloperOptionsView: View {
                         AndroidSwitchRow(title: "Stay awake while charging", isOn: $stayAwake)
                     }
 
+                    AndroidSection("Interface") {
+                        AndroidActionRow(title: "Animation speed",
+                                         subtitle: "Wordmark and background motion",
+                                         value: speedLabel,
+                                         action: cycleSpeed)
+                        AndroidDivider()
+                        AndroidSwitchRow(title: "Animations", subtitle: "Master switch", isOn: $animationsEnabled)
+                        AndroidDivider()
+                        AndroidSwitchRow(title: "Nebula blobs", isOn: $showBlobs)
+                        AndroidDivider()
+                        AndroidSwitchRow(title: "Starfield", isOn: $showStars)
+                        AndroidDivider()
+                        AndroidSwitchRow(title: "Tap shockwaves", isOn: $shockwaves)
+                        AndroidDivider()
+                        AndroidSwitchRow(title: "Show touch points", subtitle: "A ring wherever you tap", isOn: $touchPoints)
+                        AndroidDivider()
+                        AndroidSwitchRow(title: "FPS counter", subtitle: "Frames per second, top right", isOn: $showFPS)
+                    }
+
+                    AndroidSection("System") {
+                        AndroidSwitchRow(title: "Stay awake while charging",
+                                         subtitle: "Keep the screen on",
+                                         isOn: $keepAwake)
+                        AndroidDivider()
+                        AndroidActionRow(title: "Certificates",
+                                         subtitle: "Import a .p12 and .mobileprovision",
+                                         action: { showCertificates = true })
+                        AndroidDivider()
+                        AndroidActionRow(title: "Clear history",
+                                         subtitle: "\(HistoryStore.shared.events.count) of 20 stored",
+                                         action: {
+                                             HistoryStore.shared.clear()
+                                             ToastCenter.shared.show("History cleared")
+                                         })
+                        AndroidDivider()
+                        AndroidActionRow(title: "Copy device info",
+                                         subtitle: "To the clipboard",
+                                         action: copyDeviceInfo)
+                        AndroidDivider()
+                        AndroidActionRow(title: "Reset all settings",
+                                         subtitle: "Keeps developer mode on",
+                                         action: resetAllSettings)
+                    }
+
                     AndroidSection("Extras") {
                         AndroidSwitchRow(title: "Fake money test",
                                          subtitle: "Adds the Fake Money tab",
@@ -317,11 +372,74 @@ struct DeveloperOptionsView: View {
             }
         }
         .preferredColorScheme(.light)
-        .onAppear { Notifier.requestPermission() }
+        .sheet(isPresented: $showCertificates) {
+            CertificatesView()
+        }
+        .onAppear {
+            Notifier.requestPermission()
+            UIApplication.shared.isIdleTimerDisabled = keepAwake
+        }
+        .onChange(of: keepAwake) { newValue in
+            UIApplication.shared.isIdleTimerDisabled = newValue
+            ToastCenter.shared.show(newValue ? "Screen will stay awake" : "Screen sleep restored")
+        }
     }
 
     private func goBack() {
         if !path.isEmpty { path.removeLast() }
+    }
+
+    private var speedLabel: String {
+        if animationSpeed <= 0.6 { return "Slow" }
+        if animationSpeed >= 1.7 { return "Fast" }
+        return "Normal"
+    }
+
+    private func cycleSpeed() {
+        if animationSpeed <= 0.6 { animationSpeed = 1.0 }
+        else if animationSpeed >= 1.7 { animationSpeed = 0.5 }
+        else { animationSpeed = 2.0 }
+        ToastCenter.shared.show("Animation speed: \(speedLabel)")
+    }
+
+    private func copyDeviceInfo() {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        let size = UIScreen.main.bounds.size
+        let info = """
+        Voltex \(version) (\(build))
+        \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)
+        Model \(UIDevice.current.model)
+        Screen \(Int(size.width))x\(Int(size.height)) @\(UIScreen.main.scale)x
+        """
+        UIPasteboard.general.string = info
+        ToastCenter.shared.show("Device info copied")
+    }
+
+    private func resetAllSettings() {
+        if let domain = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: domain)
+        }
+        UserDefaults.standard.synchronize()
+
+        animationSpeed = 1.0
+        animationsEnabled = true
+        showBlobs = true
+        showStars = true
+        shockwaves = true
+        touchPoints = false
+        showFPS = false
+        keepAwake = false
+        stayAwake = false
+        showTaps = false
+        pointerLocation = false
+        layoutBounds = false
+        showFakeMoney = false
+        wirelessDebug = false
+        usbDebug = false
+
+        UserDefaults.standard.set(true, forKey: "voltexDeveloper")
+        ToastCenter.shared.show("Settings reset")
     }
 
     private var banner: some View {
@@ -532,4 +650,182 @@ struct USBConfigurationView: View {
             }
         }
     }
+}
+
+// MARK: - Certificates
+
+/// Holds a signing certificate (.p12) and provisioning profile, and can read the
+/// profile's details back out. Stored in the app's own Documents folder.
+final class CertificateStore: ObservableObject {
+    static let shared = CertificateStore()
+
+    struct ProfileInfo {
+        var name: String
+        var team: String
+        var uuid: String
+        var expires: Date?
+        var deviceCount: Int
+        var appID: String
+    }
+
+    @Published private(set) var p12Name: String?
+    @Published private(set) var profileName: String?
+    @Published private(set) var info: ProfileInfo?
+
+    private let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    private let p12Key = "voltexP12Name"
+    private let profileKey = "voltexProfileName"
+
+    private init() { load() }
+
+    var hasCertificate: Bool { p12Name != nil && profileName != nil }
+
+    func importP12(_ url: URL) {
+        copy(url, prefix: "cert-") { name in
+            p12Name = name
+            UserDefaults.standard.set(name, forKey: p12Key)
+            ToastCenter.shared.show("Certificate imported")
+        }
+    }
+
+    func importProfile(_ url: URL) {
+        copy(url, prefix: "profile-") { name in
+            profileName = name
+            UserDefaults.standard.set(name, forKey: profileKey)
+            info = Self.readProfile(docs.appendingPathComponent(name))
+            ToastCenter.shared.show(info == nil ? "Profile imported" : "Profile: \(info!.name)")
+        }
+    }
+
+    func removeAll() {
+        for name in [p12Name, profileName].compactMap({ $0 }) {
+            try? FileManager.default.removeItem(at: docs.appendingPathComponent(name))
+        }
+        p12Name = nil
+        profileName = nil
+        info = nil
+        UserDefaults.standard.removeObject(forKey: p12Key)
+        UserDefaults.standard.removeObject(forKey: profileKey)
+        ToastCenter.shared.show("Certificate removed")
+    }
+
+    private func copy(_ url: URL, prefix: String, done: (String) -> Void) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+        let extensionPart = url.pathExtension.isEmpty ? "bin" : url.pathExtension
+        let name = "\(prefix)\(UUID().uuidString).\(extensionPart)"
+        let destination = docs.appendingPathComponent(name)
+        do {
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.copyItem(at: url, to: destination)
+            done(name)
+        } catch {
+            ToastCenter.shared.show("Couldn't import that file")
+        }
+    }
+
+    private func load() {
+        p12Name = UserDefaults.standard.string(forKey: p12Key)
+        profileName = UserDefaults.standard.string(forKey: profileKey)
+        if let profileName {
+            info = Self.readProfile(docs.appendingPathComponent(profileName))
+        }
+    }
+
+    /// A .mobileprovision is a CMS blob with a plist inside it.
+    static func readProfile(_ url: URL) -> ProfileInfo? {
+        guard let data = try? Data(contentsOf: url),
+              let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex)
+        else { return nil }
+
+        let plistData = data.subdata(in: start.lowerBound..<end.upperBound)
+        guard let plist = (try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil)) as? [String: Any]
+        else { return nil }
+
+        return ProfileInfo(
+            name: plist["Name"] as? String ?? "Unnamed",
+            team: plist["TeamName"] as? String ?? "Unknown team",
+            uuid: plist["UUID"] as? String ?? "-",
+            expires: plist["ExpirationDate"] as? Date,
+            deviceCount: (plist["ProvisionedDevices"] as? [String])?.count ?? 0,
+            appID: plist["Entitlements"].flatMap { ($0 as? [String: Any])?["application-identifier"] as? String } ?? "-"
+        )
+    }
+}
+
+struct CertificatesView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var store = CertificateStore.shared
+
+    @State private var showP12Picker = false
+    @State private var showProfilePicker = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AndroidPalette.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        AndroidSection("Signing certificate") {
+                            AndroidActionRow(title: store.p12Name == nil ? "Import .p12" : ".p12 imported",
+                                             subtitle: store.p12Name == nil ? "Tap to choose your certificate file" : "Tap to replace",
+                                             action: { showP12Picker = true })
+                            AndroidDivider()
+                            AndroidActionRow(title: store.profileName == nil ? "Import .mobileprovision" : ".mobileprovision imported",
+                                             subtitle: store.profileName == nil ? "Tap to choose your profile" : "Tap to replace",
+                                             action: { showProfilePicker = true })
+                        }
+
+                        if let info = store.info {
+                            AndroidSection("Profile") {
+                                AndroidInfoRow(title: "Name", value: info.name)
+                                AndroidDivider()
+                                AndroidInfoRow(title: "Team", value: info.team)
+                                AndroidDivider()
+                                AndroidInfoRow(title: "App ID", value: info.appID)
+                                AndroidDivider()
+                                AndroidInfoRow(title: "Devices", value: "\(info.deviceCount)")
+                                AndroidDivider()
+                                AndroidInfoRow(title: "Expires", value: info.expires.map { Self.formatter.string(from: $0) } ?? "unknown")
+                            }
+                        }
+
+                        AndroidSection("") {
+                            AndroidActionRow(title: "Remove certificate", action: { store.removeAll() })
+                        }
+
+                        AndroidFooter(text: "Voltex keeps your certificate here and reads your profile, but it cannot re-sign an IPA. Signing needs Apple's code-signing engine plus your private key, which is exactly what ESign/Scarlet ship. Voltex installs an IPA that is already signed — point it at a signed build and it will hand it to iOS.")
+                    }
+                    .padding(16)
+                    .padding(.bottom, 30)
+                }
+
+                AndroidToastHost()
+            }
+            .navigationTitle("Certificates")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(AndroidPalette.accent)
+                }
+            }
+            .fileImporter(isPresented: $showP12Picker, allowedContentTypes: [.data, .item]) { result in
+                if case .success(let urls) = result, let url = urls.first { store.importP12(url) }
+            }
+            .fileImporter(isPresented: $showProfilePicker, allowedContentTypes: [.data, .item]) { result in
+                if case .success(let urls) = result, let url = urls.first { store.importProfile(url) }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    private static let formatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
+    }()
 }

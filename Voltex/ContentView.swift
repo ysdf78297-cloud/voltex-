@@ -3,6 +3,9 @@ import UIKit
 
 struct ContentView: View {
     @AppStorage("showFakeMoneyTab") private var showFakeMoney = false
+    @AppStorage("devShockwaves") private var shockwaves = true
+    @AppStorage("devTouchPoints") private var touchPoints = false
+    @AppStorage("devKeepAwake") private var keepAwake = false
     @State private var selection = "ipas"
 
     init() {
@@ -46,14 +49,21 @@ struct ContentView: View {
             .tint(VoltexTheme.orange)
 
             ShockwaveOverlay()
+            TouchDotOverlay()
+            FPSMeterOverlay()
             AndroidToastHost()
         }
         .onChange(of: showFakeMoney) { newValue in
             if !newValue && selection == "fake" { selection = "ipas" }
         }
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = keepAwake }
+        .onChange(of: keepAwake) { newValue in
+            UIApplication.shared.isIdleTimerDisabled = newValue
+        }
         .background(
             WindowTapCatcher { point in
-                ShockwaveCenter.shared.spawn(at: point)
+                if shockwaves { ShockwaveCenter.shared.spawn(at: point) }
+                if touchPoints { TouchDotCenter.shared.add(at: point) }
             }
         )
     }

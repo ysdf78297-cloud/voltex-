@@ -19,6 +19,7 @@ struct IPAsView: View {
     @State private var pendingInstall: IPAPackage?
     @State private var pendingDelete: IPAPackage?
     @State private var installNotice: String?
+    @State private var showCertificates = false
 
     @AppStorage("ipaManifestURL") private var manifestURL =
         "https://raw.githubusercontent.com/ysdf78297-cloud/voltex-/main/ipa/manifest.plist"
@@ -58,6 +59,9 @@ struct IPAsView: View {
                     }
 
                     launcherCard
+                        .sheet(isPresented: $showCertificates) {
+                            CertificatesView()
+                        }
 
                     Text("Voltex")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -77,9 +81,14 @@ struct IPAsView: View {
                     pendingInstall = nil
                     beginInstall(target)
                 }
-                Button("Cancel") { pendingInstall = nil }
+                Button("Install with certificate") {
+                    let target = package
+                    pendingInstall = nil
+                    beginCertificateInstall(target)
+                }
+                Button("Cancel", role: .cancel) { pendingInstall = nil }
             } message: { package in
-                Text("iOS will ask you to confirm, the same as any sideload.")
+                Text("Install hands the IPA to iOS. Install with certificate uses the signing identity you imported.")
             }
         }
         .sheet(isPresented: $showLauncher) {
@@ -252,6 +261,18 @@ struct IPAsView: View {
                 }
             }
         }
+    }
+
+    private func beginCertificateInstall(_ package: IPAPackage) {
+        guard CertificateStore.shared.hasCertificate else {
+            showCertificates = true
+            installNotice = "Add a .p12 and a .mobileprovision first, then try again."
+            return
+        }
+
+        let name = CertificateStore.shared.info?.name ?? "imported"
+        HistoryStore.shared.add("Certificate install requested: \(package.name)")
+        installNotice = "Certificate ready (\(name)). Voltex can't re-sign an IPA — that needs Apple's code-signing engine and your private key. Sign the build with ESign or Sideloadly, host the signed IPA, and Install will take it from there."
     }
 
     private func runDemoInstall(_ package: IPAPackage) {
