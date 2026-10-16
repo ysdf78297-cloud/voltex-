@@ -125,12 +125,13 @@ struct BlobBackground: View {
                     let dSq = dx * dx + dy * dy
                     if dSq < linkSq {
                         let d = dSq.squareRoot()
+                        let strength = CGFloat(0.16) * (1 - d / linkDistance)
                         var path = Path()
                         path.move(to: points[i])
                         path.addLine(to: points[j])
                         context.stroke(
                             path,
-                            with: .color(VoltexTheme.orange.opacity(0.16 * (1 - d / linkDistance))),
+                            with: .color(VoltexTheme.orange.opacity(Double(strength))),
                             lineWidth: 1
                         )
                     }
