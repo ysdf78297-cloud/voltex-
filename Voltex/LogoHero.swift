@@ -34,7 +34,7 @@ struct LogoHero: View {
             }
             .offset(y: floatUp ? -8 : 8)
 
-            ShimmerTitle("Voltex")
+            ShimmerTitle(text: "Voltex")
         }
         .onAppear(perform: start)
         .onChange(of: animationsEnabled) { _ in start() }
