@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The Voltex background, done natively (no HTML): a drifting orange "nebula"
 /// over black, plus a constellation network of stars that link up when close —
@@ -199,13 +200,62 @@ struct ShockwaveOverlay: View {
     @ObservedObject private var center = ShockwaveCenter.shared
 
     var body: some View {
-        ZStack {
-            ForEach(center.waves) { wave in
-                ShockwaveRing(position: wave.position)
+        GeometryReader { geo in
+            let origin = geo.frame(in: .global).origin
+            ZStack {
+                ForEach(center.waves) { wave in
+                    ShockwaveRing(
+                        position: CGPoint(x: wave.position.x - origin.x,
+                                          y: wave.position.y - origin.y)
+                    )
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
         .allowsHitTesting(false)
         .ignoresSafeArea()
+    }
+}
+
+/// Watches taps on the whole window without stealing them from the UI,
+/// so shockwaves fire everywhere while the tab bar and buttons still work.
+struct WindowTapCatcher: UIViewRepresentable {
+    var onTap: (CGPoint) -> Void
+
+    func makeUIView(context: Context) -> TapView {
+        let view = TapView()
+        view.isUserInteractionEnabled = false
+        view.onTap = onTap
+        return view
+    }
+
+    func updateUIView(_ uiView: TapView, context: Context) {
+        uiView.onTap = onTap
+    }
+
+    final class TapView: UIView, UIGestureRecognizerDelegate {
+        var onTap: ((CGPoint) -> Void)?
+        private var installed = false
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard let window, !installed else { return }
+            let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            window.addGestureRecognizer(recognizer)
+            installed = true
+        }
+
+        @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+            guard let window else { return }
+            onTap?(recognizer.location(in: window))
+        }
+
+        func gestureRecognizer(_ gesture: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
     }
 }
 

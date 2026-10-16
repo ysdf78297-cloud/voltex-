@@ -5,46 +5,107 @@ import ObjectiveC
 struct HiddenApp: Identifiable {
     let id: String
     let name: String
-    let scheme: String
-    let icon: String
     let note: String
+    let icon: String
+    let candidates: [String]
+    let scheme: String?
+
+    init(id: String, name: String, note: String, icon: String,
+         candidates: [String] = [], scheme: String? = nil) {
+        self.id = id
+        self.name = name
+        self.note = note
+        self.icon = icon
+        self.candidates = candidates
+        self.scheme = scheme
+    }
 }
 
-/// Lists the hidden / system apps you normally can't reach, and opens them.
+/// Lists the hidden / internal apps that you can't normally find or launch.
 struct AppLauncherView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var search = ""
     @State private var message: String?
-    @State private var discovered: [HiddenApp] = []
+    @State private var discovered: [(name: String, bundleID: String)] = []
 
-    private let hiddenApps: [HiddenApp] = [
-        HiddenApp(id: "settings",   name: "Settings",     scheme: "App-prefs:",          icon: "gearshape.fill",     note: "System settings"),
-        HiddenApp(id: "photos",     name: "Photos",       scheme: "photos-redirect://",  icon: "photo.fill",         note: "Hidden redirect"),
-        HiddenApp(id: "files",      name: "Files",        scheme: "shareddocuments://",  icon: "folder.fill",        note: "Files app"),
-        HiddenApp(id: "notes",      name: "Notes",        scheme: "mobilenotes://",      icon: "note.text",          note: "Notes app"),
-        HiddenApp(id: "shortcuts",  name: "Shortcuts",    scheme: "shortcuts://",        icon: "wand.and.stars",     note: "Automation"),
-        HiddenApp(id: "health",     name: "Health",       scheme: "x-apple-health://",   icon: "heart.fill",         note: "Health data"),
-        HiddenApp(id: "wallet",     name: "Wallet",       scheme: "shoebox://",          icon: "creditcard.fill",    note: "Wallet"),
-        HiddenApp(id: "watch",      name: "Watch",        scheme: "watchapp://",         icon: "applewatch",         note: "Watch app"),
-        HiddenApp(id: "calendar",   name: "Calendar",     scheme: "calshow://",          icon: "calendar",           note: "Calendar"),
-        HiddenApp(id: "reminders",  name: "Reminders",    scheme: "x-apple-reminder://", icon: "checkmark.circle",   note: "Reminders"),
-        HiddenApp(id: "compass",    name: "Compass",      scheme: "compass://",          icon: "location.north.circle.fill", note: "Compass"),
-        HiddenApp(id: "measure",    name: "Measure",      scheme: "com.apple.measure://", icon: "ruler",             note: "Measure"),
-        HiddenApp(id: "translate",  name: "Translate",    scheme: "translate://",        icon: "textformat",         note: "Translate"),
-        HiddenApp(id: "tips",       name: "Tips",         scheme: "tips://",             icon: "lightbulb.fill",     note: "Tips"),
-        HiddenApp(id: "podcasts",   name: "Podcasts",     scheme: "podcasts://",         icon: "mic.fill",           note: "Podcasts"),
-        HiddenApp(id: "books",      name: "Books",        scheme: "ibooks://",           icon: "book.fill",          note: "Books"),
-        HiddenApp(id: "appstore",   name: "App Store",    scheme: "itms-apps://",        icon: "app.fill",           note: "App Store"),
-        HiddenApp(id: "maps",       name: "Maps",         scheme: "maps://",             icon: "map.fill",           note: "Maps"),
-        HiddenApp(id: "clock",      name: "Clock",        scheme: "clock-alarm://",      icon: "alarm.fill",         note: "Alarms"),
-        HiddenApp(id: "stocks",     name: "Stocks",       scheme: "stocks://",           icon: "chart.bar.fill",     note: "Stocks"),
-        HiddenApp(id: "weather",    name: "Weather",      scheme: "weather://",          icon: "cloud.sun.fill",     note: "Weather"),
-        HiddenApp(id: "freeform",   name: "Freeform",     scheme: "freeform://",         icon: "pencil.tip.crop.circle", note: "Freeform"),
-        HiddenApp(id: "findmy",     name: "Find My",      scheme: "findmy://",           icon: "location.fill",      note: "Find My"),
-        HiddenApp(id: "passwords",  name: "Passwords",    scheme: "passwordmanager://",  icon: "key.fill",           note: "Passwords"),
-        HiddenApp(id: "feedback",   name: "Feedback",     scheme: "feedback://",         icon: "bubble.left.fill",   note: "Feedback Assistant"),
-        HiddenApp(id: "diagnostics",name: "Diagnostics",  scheme: "diagnostics://",      icon: "waveform.path.ecg",  note: "Diagnostics")
+    /// Internal apps that ship inside iOS but have no icon anywhere on the Home Screen.
+    private let internalApps: [HiddenApp] = [
+        HiddenApp(id: "springboard", name: "SpringBoard", note: "The Home Screen itself", icon: "square.grid.2x2.fill", candidates: ["com.apple.springboard"]),
+        HiddenApp(id: "spotlight", name: "Spotlight", note: "System search", icon: "magnifyingglass", candidates: ["com.apple.Spotlight"]),
+        HiddenApp(id: "axremote", name: "AX Remote View Service", note: "Internal accessibility service", icon: "rectangle.on.rectangle", candidates: ["com.apple.AXRemoteViewService"]),
+        HiddenApp(id: "axui", name: "AccessibilityUIServer", note: "Accessibility overlay server", icon: "figure.wave", candidates: ["com.apple.accessibility.AccessibilityUIServer"]),
+        HiddenApp(id: "diagnostics", name: "Diagnostics", note: "Apple Store Genius diagnostics", icon: "waveform.path.ecg", candidates: ["com.apple.Diagnostics"], scheme: "diagnostics://"),
+        HiddenApp(id: "iodiagnostics", name: "iOS Diagnostics", note: "Genius Bar diagnostics", icon: "wrench.and.screwdriver.fill", candidates: ["com.apple.iOSDiagnostics"], scheme: "diags://"),
+        HiddenApp(id: "checkerboard", name: "CheckerBoard", note: "Self Service Repair mode", icon: "square.grid.3x3.fill", candidates: ["com.apple.CheckerBoard"]),
+        HiddenApp(id: "preboard", name: "PreBoard", note: "Developer Mode authorisation", icon: "lock.shield.fill", candidates: ["com.apple.PreBoard"]),
+        HiddenApp(id: "setup", name: "Setup", note: "Setup Assistant (PurpleBuddy)", icon: "gearshape.2.fill", candidates: ["com.apple.purplebuddy", "com.apple.Setup"]),
+        HiddenApp(id: "feedback", name: "Feedback", note: "Feedback Assistant", icon: "bubble.left.fill", candidates: ["com.apple.appleseed.FeedbackAssistant", "com.apple.Feedback"], scheme: "feedback://"),
+        HiddenApp(id: "fieldtest", name: "Field Test", note: "Cellular engineering menu", icon: "antenna.radiowaves.left.and.right", candidates: ["com.apple.FieldTest", "com.apple.FTMInternal"]),
+        HiddenApp(id: "posterboard", name: "PosterBoard", note: "Lock Screen wallpapers engine", icon: "photo.on.rectangle.angled", candidates: ["com.apple.PosterBoard"]),
+        HiddenApp(id: "previewshell", name: "PreviewShell", note: "Internal preview host", icon: "square.stack.3d.up.fill", candidates: ["com.apple.PreviewShell"]),
+        HiddenApp(id: "websheet", name: "WebSheet", note: "In-app auth web sheet", icon: "safari.fill", candidates: ["com.apple.WebSheet"]),
+        HiddenApp(id: "trustme", name: "TrustMe", note: "Certificate trust dialog", icon: "checkmark.shield.fill", candidates: ["com.apple.TrustMe"]),
+        HiddenApp(id: "loginui", name: "LoginUI", note: "System login UI", icon: "person.crop.circle.fill", candidates: ["com.apple.LoginUI"]),
+        HiddenApp(id: "coreauthui", name: "CoreAuthUI", note: "Biometric auth UI", icon: "faceid", candidates: ["com.apple.CoreAuthUI"]),
+        HiddenApp(id: "demoapp", name: "DemoApp", note: "Retail demo app", icon: "play.rectangle.fill", candidates: ["com.apple.DemoApp"]),
+        HiddenApp(id: "family", name: "Family", note: "Screen Time internals", icon: "person.3.fill", candidates: ["com.apple.Family"]),
+        HiddenApp(id: "sidecar", name: "Sidecar", note: "Use iPad as a second display", icon: "ipad.and.iphone", candidates: ["com.apple.Sidecar"]),
+        HiddenApp(id: "printcenter", name: "Print Center", note: "AirPrint queue", icon: "printer.fill", candidates: ["com.apple.printcenter", "com.apple.PrintCenter"]),
+        HiddenApp(id: "sharingview", name: "SharingViewService", note: "AirDrop / share sheet", icon: "square.and.arrow.up", candidates: ["com.apple.SharingViewService"]),
+        HiddenApp(id: "acctauthdialog", name: "Account Authentication Dialog", note: "iCloud sign-in dialog", icon: "person.badge.key.fill", candidates: ["com.apple.AccountAuthenticationDialog"]),
+        HiddenApp(id: "accessorysetup", name: "AccessorySetupUI", note: "Accessory pairing", icon: "airpodspro", candidates: ["com.apple.AccessorySetupUI", "com.apple.AccessorySetupKitUI"]),
+        HiddenApp(id: "adsheet", name: "AdSheet", note: "Internal ad sheet", icon: "rectangle.badge.plus", candidates: ["com.apple.AdSheet"]),
+        HiddenApp(id: "airplay", name: "AirPlay", note: "AirPlay receiver UI", icon: "airplayvideo", candidates: ["com.apple.AirPlay"]),
+        HiddenApp(id: "batteries", name: "Batteries", note: "Battery widget internals", icon: "battery.100", candidates: ["com.apple.Batteries"]),
+        HiddenApp(id: "carplaysplash", name: "CarPlaySplashScreen", note: "CarPlay splash", icon: "car.fill", candidates: ["com.apple.CarPlaySplashScreen"]),
+        HiddenApp(id: "climate", name: "Climate", note: "In-car climate controls", icon: "thermometer.medium", candidates: ["com.apple.Climate"]),
+        HiddenApp(id: "clipview", name: "ClipViewService", note: "Clipboard view service", icon: "doc.on.clipboard.fill", candidates: ["com.apple.ClipViewService"]),
+        HiddenApp(id: "clockangel", name: "ClockAngel", note: "Lock Screen clock", icon: "clock.fill", candidates: ["com.apple.ClockAngel"]),
+        HiddenApp(id: "closures", name: "Closures", note: "Internal closures UI", icon: "circle.dashed", candidates: ["com.apple.Closures"]),
+        HiddenApp(id: "colorpicker", name: "ColorPickerUIService", note: "System colour picker", icon: "paintpalette.fill", candidates: ["com.apple.ColorPickerUIService"]),
+        HiddenApp(id: "eyerelief", name: "EyeReliefUI", note: "Screen distance alerts", icon: "eye.fill", candidates: ["com.apple.EyeReliefUI"]),
+        HiddenApp(id: "musicrecognition", name: "MusicRecognition", note: "Song recognition internals", icon: "music.note", candidates: ["com.apple.MusicRecognition"]),
+        HiddenApp(id: "pasview", name: "PASViewService", note: "Password AutoFill view", icon: "key.horizontal.fill", candidates: ["com.apple.PASViewService"]),
+        HiddenApp(id: "prideposter", name: "PridePosterApp", note: "Pride wallpapers", icon: "rainbow", candidates: ["com.apple.PridePosterApp"]),
+        HiddenApp(id: "safetymonitor", name: "SafetyMonitorApp", note: "Crash / safety monitor", icon: "exclamationmark.shield.fill", candidates: ["com.apple.SafetyMonitorApp"]),
+        HiddenApp(id: "screenshotservices", name: "ScreenshotServicesService", note: "Screenshot markup engine", icon: "camera.viewfinder", candidates: ["com.apple.ScreenshotServicesService"]),
+        HiddenApp(id: "tvconference", name: "TVConferenceRoomDisplay", note: "Apple TV conference mode", icon: "tv.fill", candidates: ["com.apple.TVConferenceRoomDisplay"]),
+        HiddenApp(id: "tvscreensaver", name: "TVScreenSaver", note: "Apple TV screen saver", icon: "tv.inset.filled", candidates: ["com.apple.TVScreenSaver"]),
+        HiddenApp(id: "tvsettings", name: "TVSettings", note: "Apple TV settings", icon: "tv.badge.wifi", candidates: ["com.apple.TVSettings"]),
+        HiddenApp(id: "tirepressure", name: "TirePressure", note: "Vehicle tyre pressure", icon: "car.circle.fill", candidates: ["com.apple.TirePressure"]),
+        HiddenApp(id: "unityposter", name: "UnityPosterApp", note: "Unity wallpapers", icon: "circle.hexagongrid.fill", candidates: ["com.apple.UnityPosterApp"]),
+        HiddenApp(id: "vehicle", name: "Vehicle", note: "Car integration", icon: "car.2.fill", candidates: ["com.apple.Vehicle"]),
+        HiddenApp(id: "writingtools", name: "WritingToolsUIService", note: "Apple Intelligence UI", icon: "text.append", candidates: ["com.apple.WritingToolsUIService"]),
+        HiddenApp(id: "activity", name: "Activity", note: "Internal activity UI", icon: "bolt.circle.fill", candidates: ["com.apple.Activity"]),
+        HiddenApp(id: "watchbridge", name: "Watch Bridge", note: "Apple Watch pairing", icon: "applewatch", candidates: ["com.apple.Bridge"])
+    ]
+
+    /// Normal system apps — these have URL schemes, so they open even without the private path.
+    private let schemeApps: [HiddenApp] = [
+        HiddenApp(id: "settings", name: "Settings", note: "System settings", icon: "gearshape.fill", scheme: "App-prefs:"),
+        HiddenApp(id: "photos", name: "Photos", note: "Hidden redirect", icon: "photo.fill", scheme: "photos-redirect://"),
+        HiddenApp(id: "files", name: "Files", note: "Files app", icon: "folder.fill", scheme: "shareddocuments://"),
+        HiddenApp(id: "notes", name: "Notes", note: "Notes app", icon: "note.text", scheme: "mobilenotes://"),
+        HiddenApp(id: "shortcuts", name: "Shortcuts", note: "Automation", icon: "wand.and.stars", scheme: "shortcuts://"),
+        HiddenApp(id: "health", name: "Health", note: "Health data", icon: "heart.fill", scheme: "x-apple-health://"),
+        HiddenApp(id: "wallet", name: "Wallet", note: "Wallet", icon: "creditcard.fill", scheme: "shoebox://"),
+        HiddenApp(id: "calendar", name: "Calendar", note: "Calendar", icon: "calendar", scheme: "calshow://"),
+        HiddenApp(id: "reminders", name: "Reminders", note: "Reminders", icon: "checkmark.circle", scheme: "x-apple-reminder://"),
+        HiddenApp(id: "compass", name: "Compass", note: "Compass", icon: "location.north.circle.fill", scheme: "compass://"),
+        HiddenApp(id: "measure", name: "Measure", note: "Measure", icon: "ruler", scheme: "com.apple.measure://"),
+        HiddenApp(id: "translate", name: "Translate", note: "Translate", icon: "textformat", scheme: "translate://"),
+        HiddenApp(id: "tips", name: "Tips", note: "Tips", icon: "lightbulb.fill", scheme: "tips://"),
+        HiddenApp(id: "podcasts", name: "Podcasts", note: "Podcasts", icon: "mic.fill", scheme: "podcasts://"),
+        HiddenApp(id: "books", name: "Books", note: "Books", icon: "book.fill", scheme: "ibooks://"),
+        HiddenApp(id: "appstore", name: "App Store", note: "App Store", icon: "app.fill", scheme: "itms-apps://"),
+        HiddenApp(id: "maps", name: "Maps", note: "Maps", icon: "map.fill", scheme: "maps://"),
+        HiddenApp(id: "clock", name: "Clock", note: "Alarms", icon: "alarm.fill", scheme: "clock-alarm://"),
+        HiddenApp(id: "stocks", name: "Stocks", note: "Stocks", icon: "chart.bar.fill", scheme: "stocks://"),
+        HiddenApp(id: "weather", name: "Weather", note: "Weather", icon: "cloud.sun.fill", scheme: "weather://"),
+        HiddenApp(id: "freeform", name: "Freeform", note: "Freeform", icon: "pencil.tip.crop.circle", scheme: "freeform://"),
+        HiddenApp(id: "findmy", name: "Find My", note: "Find My", icon: "location.fill", scheme: "findmy://"),
+        HiddenApp(id: "passwords", name: "Passwords", note: "Passwords", icon: "key.fill", scheme: "passwordmanager://")
     ]
 
     var body: some View {
@@ -61,17 +122,27 @@ struct AppLauncherView: View {
                         }
                     }
 
-                    if !discovered.isEmpty {
-                        Section("Found on this device") {
-                            ForEach(discovered) { app in
-                                row(app, action: { openBundle(app.id) })
-                            }
+                    Section {
+                        ForEach(filteredInternal) { app in
+                            row(app, tap: { openInternal(app) })
+                        }
+                    } header: {
+                        Text("Hidden / internal apps")
+                    } footer: {
+                        Text("These ship inside iOS with no icon anywhere. Some are blocked by the system and won't launch.")
+                    }
+
+                    Section("System apps") {
+                        ForEach(filteredScheme) { app in
+                            row(app, tap: { openScheme(app) })
                         }
                     }
 
-                    Section("Hidden system apps") {
-                        ForEach(filtered) { app in
-                            row(app, action: { open(app) })
+                    if !filteredDiscovered.isEmpty {
+                        Section("Found on this device") {
+                            ForEach(filteredDiscovered) { app in
+                                row(app, tap: { openBundle(app.bundleID, name: app.name) })
+                            }
                         }
                     }
                 }
@@ -92,70 +163,124 @@ struct AppLauncherView: View {
         .onAppear(perform: discover)
     }
 
-    private var filtered: [HiddenApp] {
-        guard !search.isEmpty else { return hiddenApps }
-        return hiddenApps.filter { $0.name.localizedCaseInsensitiveContains(search) }
+    // MARK: - filtering
+
+    private var filteredInternal: [HiddenApp] { match(internalApps) }
+    private var filteredScheme: [HiddenApp] { match(schemeApps) }
+
+    private func match(_ apps: [HiddenApp]) -> [HiddenApp] {
+        guard !search.isEmpty else { return apps }
+        return apps.filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
 
-    private func row(_ app: HiddenApp, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: app.icon)
-                    .font(.system(size: 17, weight: .semibold))
+    private struct DiscoveredApp: Identifiable {
+        let id: String
+        let name: String
+        let bundleID: String
+    }
+
+    private var filteredDiscovered: [DiscoveredApp] {
+        let known = Set((internalApps + schemeApps).flatMap { $0.candidates })
+        let others = discovered
+            .filter { !known.contains($0.bundleID) && !$0.bundleID.hasPrefix("com.voltex") }
+            .map { DiscoveredApp(id: $0.bundleID, name: $0.name, bundleID: $0.bundleID) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        guard !search.isEmpty else { return others }
+        return others.filter { $0.name.localizedCaseInsensitiveContains(search) }
+    }
+
+    // MARK: - rows
+
+    private func row(_ app: HiddenApp, tap: @escaping () -> Void) -> some View {
+        Button(action: tap) { rowLabel(app.name, subtitle: app.note, icon: app.icon) }
+            .buttonStyle(.plain)
+            .listRowBackground(Color.white.opacity(0.05))
+    }
+
+    private func row(_ app: DiscoveredApp, tap: @escaping () -> Void) -> some View {
+        Button(action: tap) { rowLabel(app.name, subtitle: app.bundleID, icon: "app.dashed") }
+            .buttonStyle(.plain)
+            .listRowBackground(Color.white.opacity(0.05))
+    }
+
+    private func rowLabel(_ title: String, subtitle: String, icon: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(VoltexTheme.brandGradient)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(VoltexTheme.brandGradient)
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(app.name)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(app.note)
-                        .font(.footnote)
-                        .foregroundStyle(VoltexTheme.secondary)
-                }
-
-                Spacer()
-
-                Image(systemName: "arrow.up.forward.app")
-                    .foregroundStyle(VoltexTheme.orange)
+                Text(subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(VoltexTheme.secondary)
+                    .lineLimit(1)
             }
-            .padding(.vertical, 4)
+
+            Spacer()
+
+            Image(systemName: "arrow.up.forward.app")
+                .foregroundStyle(VoltexTheme.orange)
         }
-        .buttonStyle(.plain)
-        .listRowBackground(Color.white.opacity(0.05))
+        .padding(.vertical, 4)
     }
 
-    private func open(_ app: HiddenApp) {
-        guard let url = URL(string: app.scheme) else {
-            message = "That link isn't valid."
+    // MARK: - opening
+
+    private func openInternal(_ app: HiddenApp) {
+        if let installed = resolvedBundleID(for: app), PrivateApps.open(bundleID: installed) {
             return
         }
+        if let scheme = app.scheme, let url = URL(string: scheme) {
+            UIApplication.shared.open(url, options: [:]) { ok in
+                guard !ok else { return }
+                DispatchQueue.main.async { message = "\(app.name) is blocked on this iOS version." }
+            }
+            return
+        }
+        message = "\(app.name) is blocked on this iOS version."
+    }
+
+    private func resolvedBundleID(for app: HiddenApp) -> String? {
+        for candidate in app.candidates {
+            if discovered.contains(where: { $0.bundleID.caseInsensitiveCompare(candidate) == .orderedSame }) {
+                return candidate
+            }
+        }
+        if let byName = discovered.first(where: { $0.name.caseInsensitiveCompare(app.name) == .orderedSame }) {
+            return byName.bundleID
+        }
+        return app.candidates.first
+    }
+
+    private func openScheme(_ app: HiddenApp) {
+        guard let scheme = app.scheme, let url = URL(string: scheme) else { return }
         UIApplication.shared.open(url, options: [:]) { ok in
             guard !ok else { return }
-            DispatchQueue.main.async {
-                message = "\(app.name) can't be opened on this device."
-            }
+            DispatchQueue.main.async { message = "\(app.name) isn't available on this device." }
         }
     }
 
-    private func openBundle(_ bundleID: String) {
-        PrivateApps.open(bundleID: bundleID)
+    private func openBundle(_ bundleID: String, name: String) {
+        if !PrivateApps.open(bundleID: bundleID) {
+            message = "\(name) isn't openable on this iOS version."
+        }
     }
 
     private func discover() {
-        let found = PrivateApps.installed()
-        discovered = found
-            .map { HiddenApp(id: $0.bundleID, name: $0.name, scheme: "", icon: "app.dashed", note: $0.bundleID) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        discovered = PrivateApps.installed()
     }
 }
 
 /// Best-effort access to the private app list, so "open any app" can reach apps
-/// that don't publish a URL scheme. Falls back silently to the curated list.
+/// that don't publish a URL scheme.
 enum PrivateApps {
     static func workspace() -> NSObject? {
         guard let cls = NSClassFromString("LSApplicationWorkspace") else { return nil }
@@ -178,12 +303,19 @@ enum PrivateApps {
                     .takeUnretainedValue() as? String,
                   let bundleID = app.perform(NSSelectorFromString("bundleIdentifier"))?
                     .takeUnretainedValue() as? String,
-                  !bundleID.isEmpty else { return nil }
+                  !bundleID.isEmpty, !name.isEmpty else { return nil }
             return (name, bundleID)
         }
     }
 
-    static func open(bundleID: String) {
-        _ = workspace()?.perform(NSSelectorFromString("openApplicationWithBundleID:"), with: bundleID)
+    @discardableResult
+    static func open(bundleID: String) -> Bool {
+        guard let ws = workspace() else { return false }
+        let selector = NSSelectorFromString("openApplicationWithBundleID:")
+        guard let method = class_getInstanceMethod(type(of: ws), selector) else { return false }
+
+        typealias OpenFn = @convention(c) (NSObject, Selector, NSString) -> Bool
+        let fn = unsafeBitCast(method_getImplementation(method), to: OpenFn.self)
+        return fn(ws, selector, bundleID as NSString)
     }
 }

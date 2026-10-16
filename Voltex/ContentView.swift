@@ -31,10 +31,11 @@ struct ContentView: View {
             .tint(VoltexTheme.orange)
 
             ShockwaveOverlay()
+            AndroidToastHost()
         }
-        .simultaneousGesture(
-            SpatialTapGesture().onEnded { value in
-                ShockwaveCenter.shared.spawn(at: value.location)
+        .background(
+            WindowTapCatcher { point in
+                ShockwaveCenter.shared.spawn(at: point)
             }
         )
     }
