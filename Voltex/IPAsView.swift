@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct IPAPackage: Identifiable {
     let id: String
@@ -14,7 +15,12 @@ struct IPAsView: View {
     @State private var installing: String?
     @State private var progress: Double = 0
     @State private var installed: Set<String> = []
+
+    @State private var pendingInstall: IPAPackage?
     @State private var pendingDelete: IPAPackage?
+
+    @FocusState private var sourceFocused: Bool
+    @AppStorage("ipaManifestURL") private var manifestURL = ""
 
     private let packages: [IPAPackage] = [
         IPAPackage(id: "charlie",
@@ -50,6 +56,8 @@ struct IPAsView: View {
                         }
                     }
 
+                    sourceCard
+
                     launcherCard
 
                     Text("Voltex")
@@ -61,10 +69,24 @@ struct IPAsView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .alert("Install \(pendingInstall?.name ?? "")?",
+                   isPresented: installConfirmBinding,
+                   presenting: pendingInstall) { package in
+                Button("Cancel", role: .cancel) { pendingInstall = nil }
+                Button("Install") {
+                    let target = package
+                    pendingInstall = nil
+                    beginInstall(target)
+                }
+            } message: { package in
+                Text("iOS will ask you to confirm, the same as any sideload.")
+            }
         }
         .sheet(isPresented: $showLauncher) {
             AppLauncherView()
         }
+        .keyboardToolbar(focused: $sourceFocused)
         .alert("Are you sure?", isPresented: deleteConfirmBinding) {
             Button("No", role: .cancel) { pendingDelete = nil }
             Button("Yes", role: .destructive) { confirmDelete() }
@@ -73,11 +95,14 @@ struct IPAsView: View {
         }
     }
 
+    // MARK: - bindings
+
+    private var installConfirmBinding: Binding<Bool> {
+        Binding(get: { pendingInstall != nil }, set: { if !$0 { pendingInstall = nil } })
+    }
+
     private var deleteConfirmBinding: Binding<Bool> {
-        Binding(
-            get: { pendingDelete != nil },
-            set: { if !$0 { pendingDelete = nil } }
-        )
+        Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
     }
 
     // MARK: - IPA card
@@ -164,7 +189,7 @@ struct IPAsView: View {
                 .foregroundStyle(Color.red)
         } else {
             Button {
-                startInstall(package)
+                pendingInstall = package
             } label: {
                 Text("Download")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
@@ -177,7 +202,77 @@ struct IPAsView: View {
         }
     }
 
-    private func startInstall(_ package: IPAPackage) {
+    // MARK: - install source
+
+    private var sourceCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("INSTALL SOURCE")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .kerning(1.4)
+                .foregroundStyle(VoltexTheme.orange)
+
+            Text("Paste a signed-IPA manifest URL (the `.plist` an OTA side-loader serves). Download then hands it to iOS, which shows the real Install / Cancel prompt.")
+                .font(.footnote)
+                .foregroundStyle(VoltexTheme.secondary)
+
+            TextField("https://…/manifest.plist", text: $manifestURL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .focused($sourceFocused)
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundStyle(VoltexTheme.orange)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
+
+            if manifestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Empty → Download runs the demo install instead.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(VoltexTheme.secondary)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
+                .fill(VoltexTheme.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
+                .stroke(VoltexTheme.hairline, lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: - installing
+
+    private func beginInstall(_ package: IPAPackage) {
+        let trimmed = manifestURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let manifest = URL(string: trimmed),
+              let encoded = manifest.absoluteString
+                .addingPercentEncoding(withAllowedCharacters: .alphanumerics),
+              let installURL = URL(string: "itms-services://?action=download-manifest&url=\(encoded)")
+        else {
+            runDemoInstall(package)
+            return
+        }
+
+        UIApplication.shared.open(installURL, options: [:]) { ok in
+            DispatchQueue.main.async {
+                if ok {
+                    ToastCenter.shared.show("Handed to iOS — tap Install")
+                    runDemoInstall(package)
+                } else {
+                    ToastCenter.shared.show("iOS refused that install source")
+                }
+            }
+        }
+    }
+
+    private func runDemoInstall(_ package: IPAPackage) {
         guard installing == nil else { return }
         installing = package.id
         progress = 0
@@ -243,6 +338,20 @@ struct IPAsView: View {
                 .stroke(VoltexTheme.orange.opacity(0.35), lineWidth: 1)
         )
         .padding(.horizontal, 20)
+    }
+}
+
+extension View {
+    /// A "Done" button above the keyboard, everywhere.
+    func keyboardToolbar(focused: FocusState<Bool>.Binding) -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focused.wrappedValue = false }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(VoltexTheme.orange)
+            }
+        }
     }
 }
 

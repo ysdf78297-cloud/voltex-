@@ -14,7 +14,11 @@ struct FakeMoneyView: View {
 
     @State private var flash = false
 
-    private let ticker = Timer.publish(every: 7, on: .main, in: .common).autoconnect()
+    private enum Field { case item, price }
+    @FocusState private var focusedField: Field?
+
+    /// A new fake order every 0.3 seconds while notifications are on.
+    private let ticker = Timer.publish(every: 0.3, on: .main, in: .common).autoconnect()
 
     private var price: Double { Double(priceText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
     private var entries: [String] { logRaw.split(separator: "\n").map(String.init) }
@@ -40,10 +44,19 @@ struct FakeMoneyView: View {
                 }
                 .padding(.top, 24)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .onReceive(ticker) { _ in
             guard enabled else { return }
-            if Double.random(in: 0...1) < 0.6 { makeSale() }
+            makeSale()
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(VoltexTheme.orange)
+            }
         }
         .onChange(of: enabled) { newValue in
             if newValue {
@@ -102,9 +115,9 @@ struct FakeMoneyView: View {
 
     private var settingsCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            field("Item name", text: $itemName, keyboard: .default)
+            field("Item name", text: $itemName, keyboard: .default, focus: .item)
             divider
-            field("Price", text: $priceText, keyboard: .decimalPad)
+            field("Price", text: $priceText, keyboard: .decimalPad, focus: .price)
             divider
 
             HStack {
@@ -205,7 +218,8 @@ struct FakeMoneyView: View {
         Rectangle().fill(VoltexTheme.hairline).frame(height: 1)
     }
 
-    private func field(_ title: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+    private func field(_ title: String, text: Binding<String>,
+                       keyboard: UIKeyboardType, focus: Field) -> some View {
         HStack {
             Text(title)
                 .font(.system(size: 16, weight: .medium))
@@ -213,6 +227,7 @@ struct FakeMoneyView: View {
             Spacer(minLength: 16)
             TextField("", text: text)
                 .keyboardType(keyboard)
+                .focused($focusedField, equals: focus)
                 .multilineTextAlignment(.trailing)
                 .foregroundStyle(VoltexTheme.orange)
                 .frame(maxWidth: 180)

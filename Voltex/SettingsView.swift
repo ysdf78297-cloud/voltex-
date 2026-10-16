@@ -7,6 +7,7 @@ struct SettingsView: View {
 
     @State private var buildTaps = 0
     @State private var showDeveloper = false
+    @State private var confirmClear = false
 
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -24,10 +25,30 @@ struct SettingsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Settings")
-                        .font(.system(size: 40, weight: .black, design: .rounded))
-                        .foregroundStyle(VoltexTheme.brandGradient)
-                        .padding(.top, 24)
+                    HStack(alignment: .center) {
+                        Text("Settings")
+                            .font(.system(size: 40, weight: .black, design: .rounded))
+                            .foregroundStyle(VoltexTheme.brandGradient)
+
+                        Spacer(minLength: 12)
+
+                        Button {
+                            confirmClear = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 13, weight: .bold))
+                                Text("Clear data")
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Capsule().stroke(Color.red.opacity(0.65), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 24)
 
                     card("App") {
                         row("Version", version)
@@ -93,6 +114,26 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showDeveloper) {
             DeveloperOptionsView()
+        }
+        .alert("Clear all data?", isPresented: $confirmClear) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear", role: .destructive) { clearAllData() }
+        } message: {
+            Text("Wipes everything Voltex remembers about you — settings, developer mode and all saved data — then closes the app.")
+        }
+    }
+
+    /// Wipes every stored value and fully quits, so the app comes back like a fresh install.
+    private func clearAllData() {
+        let defaults = UserDefaults.standard
+        if let domain = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: domain)
+        }
+        defaults.synchronize()
+        Notifier.clearAll()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            exit(0)
         }
     }
 
