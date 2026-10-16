@@ -20,13 +20,17 @@ struct ContentView: View {
                     .tabItem { Label("IPA's", systemImage: "square.stack.3d.up.fill") }
                     .tag(0)
 
+                FakeMoneyView()
+                    .tabItem { Label("Fake Money", systemImage: "cart.fill") }
+                    .tag(1)
+
                 SettingsView()
                     .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                    .tag(1)
+                    .tag(2)
 
                 AboutView()
                     .tabItem { Label("About", systemImage: "info.circle.fill") }
-                    .tag(2)
+                    .tag(3)
             }
             .tint(VoltexTheme.orange)
 

@@ -17,6 +17,10 @@
 		BF0000000000000000000008 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000008 /* AboutView.swift */; };
 		BF0000000000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000009 /* Assets.xcassets */; };
 		BF0000000000000000000010 /* AppLauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000011 /* AppLauncherView.swift */; };
+		BF0000000000000000000011 /* Toast.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000012 /* Toast.swift */; };
+		BF0000000000000000000012 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000013 /* Notifications.swift */; };
+		BF0000000000000000000013 /* FakeMoneyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000014 /* FakeMoneyView.swift */; };
+		BF0000000000000000000014 /* DeveloperOptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000015 /* DeveloperOptionsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +34,10 @@
 		FE0000000000000000000008 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		FE0000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FE0000000000000000000011 /* AppLauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncherView.swift; sourceTree = "<group>"; };
+		FE0000000000000000000012 /* Toast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Toast.swift; sourceTree = "<group>"; };
+		FE0000000000000000000013 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
+		FE0000000000000000000014 /* FakeMoneyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeMoneyView.swift; sourceTree = "<group>"; };
+		FE0000000000000000000015 /* DeveloperOptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperOptionsView.swift; sourceTree = "<group>"; };
 		FE0000000000000000000010 /* Voltex.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Voltex.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -64,6 +72,10 @@
 				FE0000000000000000000007 /* SettingsView.swift */,
 				FE0000000000000000000008 /* AboutView.swift */,
 				FE0000000000000000000011 /* AppLauncherView.swift */,
+				FE0000000000000000000015 /* DeveloperOptionsView.swift */,
+				FE0000000000000000000014 /* FakeMoneyView.swift */,
+				FE0000000000000000000013 /* Notifications.swift */,
+				FE0000000000000000000012 /* Toast.swift */,
 				FE0000000000000000000009 /* Assets.xcassets */,
 			);
 			path = Voltex;
@@ -153,6 +165,10 @@
 				BF0000000000000000000007 /* SettingsView.swift in Sources */,
 				BF0000000000000000000008 /* AboutView.swift in Sources */,
 				BF0000000000000000000010 /* AppLauncherView.swift in Sources */,
+				BF0000000000000000000011 /* Toast.swift in Sources */,
+				BF0000000000000000000012 /* Notifications.swift in Sources */,
+				BF0000000000000000000013 /* FakeMoneyView.swift in Sources */,
+				BF0000000000000000000014 /* DeveloperOptionsView.swift in Sources */,
 				BF0000000000000000000002 /* ContentView.swift in Sources */,
 				BF0000000000000000000001 /* VoltexApp.swift in Sources */,
 			);

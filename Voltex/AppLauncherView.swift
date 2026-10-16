@@ -28,6 +28,38 @@ struct AppLauncherView: View {
     @State private var search = ""
     @State private var message: String?
     @State private var discovered: [(name: String, bundleID: String)] = []
+    @AppStorage("alShowAll") private var showAll = false
+
+    /// Apps that only exist from a certain iOS version onwards.
+    private let minIOSById: [String: Int] = [
+        "safetymonitor": 15,
+        "posterboard": 16, "prideposter": 16, "unityposter": 16,
+        "climate": 17, "vehicle": 17, "tirepressure": 17,
+        "activity": 17, "eyerelief": 17, "closures": 17,
+        "writingtools": 18
+    ]
+
+    private var iosMajor: Int {
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+    }
+
+    /// Everything that can exist on the iOS version this device is running.
+    private var compatibleApps: [HiddenApp] {
+        internalApps.filter { (minIOSById[$0.id] ?? 0) <= iosMajor }
+    }
+
+    /// Of those, the ones actually installed here — the ones that will really open.
+    private var workingApps: [HiddenApp] {
+        guard !discovered.isEmpty else { return compatibleApps }
+        let installedIDs = Set(discovered.map { $0.bundleID.lowercased() })
+        return compatibleApps.filter { app in
+            app.candidates.contains { installedIDs.contains($0.lowercased()) }
+        }
+    }
+
+    private var hiddenCount: Int {
+        max(0, internalApps.count - workingApps.count)
+    }
 
     /// Internal apps that ship inside iOS but have no icon anywhere on the Home Screen.
     private let internalApps: [HiddenApp] = [
@@ -123,13 +155,29 @@ struct AppLauncherView: View {
                     }
 
                     Section {
+                        Toggle(isOn: $showAll) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show everything")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Text("Include apps this iOS version can't run")
+                                    .font(.footnote)
+                                    .foregroundStyle(VoltexTheme.secondary)
+                            }
+                        }
+                        .tint(VoltexTheme.orange)
+                    } footer: {
+                        Text("Detected iOS \(iosMajor). Showing \(filteredInternal.count) app\(filteredInternal.count == 1 ? "" : "s") that can open here\(hiddenCount > 0 ? " — \(hiddenCount) hidden because they don't." : ".")")
+                    }
+
+                    Section {
                         ForEach(filteredInternal) { app in
                             row(app, tap: { openInternal(app) })
                         }
                     } header: {
                         Text("Hidden / internal apps")
                     } footer: {
-                        Text("These ship inside iOS with no icon anywhere. Some are blocked by the system and won't launch.")
+                        Text("These ship inside iOS with no icon anywhere. A few still refuse to launch — that's the system, not Voltex.")
                     }
 
                     Section("System apps") {
@@ -165,7 +213,9 @@ struct AppLauncherView: View {
 
     // MARK: - filtering
 
-    private var filteredInternal: [HiddenApp] { match(internalApps) }
+    private var filteredInternal: [HiddenApp] {
+        match(showAll ? internalApps : workingApps)
+    }
     private var filteredScheme: [HiddenApp] { match(schemeApps) }
 
     private func match(_ apps: [HiddenApp]) -> [HiddenApp] {

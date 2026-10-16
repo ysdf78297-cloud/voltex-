@@ -1,55 +1,6 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Android-style toast
-
-final class ToastCenter: ObservableObject {
-    static let shared = ToastCenter()
-
-    @Published private(set) var message: String?
-    private var dismissWork: DispatchWorkItem?
-
-    func show(_ text: String) {
-        dismissWork?.cancel()
-        withAnimation(.easeOut(duration: 0.2)) { message = text }
-
-        let work = DispatchWorkItem { [weak self] in
-            withAnimation(.easeIn(duration: 0.25)) { self?.message = nil }
-        }
-        dismissWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2, execute: work)
-    }
-}
-
-/// A little dark pill that slides up from the bottom — Android's toast.
-struct AndroidToastHost: View {
-    @ObservedObject private var center = ToastCenter.shared
-
-    var body: some View {
-        VStack {
-            Spacer()
-            if let message = center.message {
-                Text(message)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(Color(white: 0.94))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 13)
-                    .background(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .fill(Color(white: 0.16).opacity(0.97))
-                            .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
-                    )
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, 132)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-        }
-        .allowsHitTesting(false)
-        .ignoresSafeArea()
-    }
-}
-
 struct SettingsView: View {
     @AppStorage("animationsEnabled") private var animationsEnabled = true
     @AppStorage("voltexDeveloper") private var isDeveloper = false
@@ -85,6 +36,9 @@ struct SettingsView: View {
                         divider
                         row("Bundle ID", bundleID)
                         divider
+                        row("Developer", isDeveloper ? "You are a developer" : "You're not a developer",
+                            valueColor: isDeveloper ? VoltexTheme.orange : VoltexTheme.secondary)
+                        divider
                         row("Theme", "Orange / Black")
                     }
 
@@ -112,14 +66,15 @@ struct SettingsView: View {
                                         .font(.system(size: 16, weight: .medium))
                                         .foregroundStyle(.white)
                                     Spacer()
-                                    Text("Debugging")
-                                        .font(.system(size: 15))
+                                    Text("Wireless + USB debugging")
+                                        .font(.system(size: 14))
                                         .foregroundStyle(VoltexTheme.secondary)
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 13, weight: .semibold))
                                         .foregroundStyle(VoltexTheme.secondary)
                                 }
                                 .padding(.vertical, 14)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -164,7 +119,7 @@ struct SettingsView: View {
         .buttonStyle(.plain)
     }
 
-    private func row(_ title: String, _ value: String) -> some View {
+    private func row(_ title: String, _ value: String, valueColor: Color = VoltexTheme.secondary) -> some View {
         HStack {
             Text(title)
                 .font(.system(size: 16, weight: .medium))
@@ -172,7 +127,7 @@ struct SettingsView: View {
             Spacer(minLength: 16)
             Text(value)
                 .font(.system(size: 15))
-                .foregroundStyle(VoltexTheme.secondary)
+                .foregroundStyle(valueColor)
                 .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 14)
@@ -200,6 +155,8 @@ struct SettingsView: View {
     }
 
     // MARK: - developer mode
+    //
+    // Tapping the build number enables developer mode. Nothing on screen says how.
 
     private func registerBuildTap() {
         if isDeveloper {
@@ -216,122 +173,6 @@ struct SettingsView: View {
         } else {
             ToastCenter.shared.show("Click \(remaining) time\(remaining == 1 ? "" : "s") more to access Developer")
         }
-    }
-}
-
-// MARK: - Developer options (Android styled)
-
-struct DeveloperOptionsView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @AppStorage("voltexWirelessDebug") private var wirelessDebug = false
-    @AppStorage("voltexUSBDebug") private var usbDebug = false
-
-    private let androidBlue = Color(red: 0.13, green: 0.59, blue: 0.95)
-    private let background = Color(red: 0.94, green: 0.94, blue: 0.94)
-    private let onSurface = Color(red: 0.13, green: 0.13, blue: 0.13)
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                background.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        banner
-
-                        card {
-                            devToggle("Wireless debugging",
-                                      subtitle: "Debug apps over Wi-Fi",
-                                      isOn: $wirelessDebug)
-                            divider
-                            devToggle("USB debugging",
-                                      subtitle: "Debug apps over USB",
-                                      isOn: $usbDebug)
-                        }
-
-                        Text("These are here for looks — iOS doesn't expose Android's debugging bridge. Leaving them on is harmless.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
-                    }
-                    .padding(16)
-                }
-
-                AndroidToastHost()
-            }
-            .navigationTitle("Developer options")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "arrow.backward")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .foregroundStyle(onSurface)
-                }
-            }
-            .onChange(of: wirelessDebug) { newValue in
-                ToastCenter.shared.show(newValue ? "Wireless debugging on" : "Wireless debugging off")
-            }
-            .onChange(of: usbDebug) { newValue in
-                ToastCenter.shared.show(newValue ? "USB debugging on" : "USB debugging off")
-            }
-        }
-        .preferredColorScheme(.light)
-    }
-
-    private var banner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color(red: 0.72, green: 0.30, blue: 0.05))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("You are a developer now!")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(onSurface)
-                Text("Tap the build number again to change this later.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(red: 1.0, green: 0.95, blue: 0.86))
-        )
-    }
-
-    private var divider: some View {
-        Rectangle().fill(Color.black.opacity(0.08)).frame(height: 1)
-    }
-
-    private func devToggle(_ title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(onSurface)
-                Text(subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .tint(androidBlue)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-    }
-
-    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 0) { content() }
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
