@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    @State private var selection = 0
+    @AppStorage("showFakeMoneyTab") private var showFakeMoney = false
+    @State private var selection = "ipas"
 
     init() {
         let appearance = UITabBarAppearance()
@@ -18,24 +19,37 @@ struct ContentView: View {
             TabView(selection: $selection) {
                 IPAsView()
                     .tabItem { Label("IPA's", systemImage: "square.stack.3d.up.fill") }
-                    .tag(0)
+                    .tag("ipas")
 
-                FakeMoneyView()
-                    .tabItem { Label("Fake Money", systemImage: "cart.fill") }
-                    .tag(1)
+                MyIPAView()
+                    .tabItem { Label("Your IPA", systemImage: "shippingbox.fill") }
+                    .tag("youripa")
+
+                HistoryView()
+                    .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                    .tag("history")
+
+                if showFakeMoney {
+                    FakeMoneyView()
+                        .tabItem { Label("Fake Money", systemImage: "cart.fill") }
+                        .tag("fake")
+                }
 
                 SettingsView()
                     .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                    .tag(2)
+                    .tag("settings")
 
                 AboutView()
                     .tabItem { Label("About", systemImage: "info.circle.fill") }
-                    .tag(3)
+                    .tag("about")
             }
             .tint(VoltexTheme.orange)
 
             ShockwaveOverlay()
             AndroidToastHost()
+        }
+        .onChange(of: showFakeMoney) { newValue in
+            if !newValue && selection == "fake" { selection = "ipas" }
         }
         .background(
             WindowTapCatcher { point in

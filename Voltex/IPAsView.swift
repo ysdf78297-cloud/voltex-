@@ -18,8 +18,8 @@ struct IPAsView: View {
 
     @State private var pendingInstall: IPAPackage?
     @State private var pendingDelete: IPAPackage?
+    @State private var installNotice: String?
 
-    @FocusState private var sourceFocused: Bool
     @AppStorage("ipaManifestURL") private var manifestURL =
         "https://raw.githubusercontent.com/ysdf78297-cloud/voltex-/main/ipa/manifest.plist"
 
@@ -57,8 +57,6 @@ struct IPAsView: View {
                         }
                     }
 
-                    sourceCard
-
                     launcherCard
 
                     Text("Voltex")
@@ -87,7 +85,11 @@ struct IPAsView: View {
         .sheet(isPresented: $showLauncher) {
             AppLauncherView()
         }
-        .keyboardToolbar(focused: $sourceFocused)
+        .alert("Install", isPresented: noticeBinding) {
+            Button("OK") { installNotice = nil }
+        } message: {
+            Text(installNotice ?? "")
+        }
         .alert("Are you sure?", isPresented: deleteConfirmBinding) {
             Button("Yes", role: .destructive) { confirmDelete() }
             Button("No") { pendingDelete = nil }
@@ -104,6 +106,10 @@ struct IPAsView: View {
 
     private var deleteConfirmBinding: Binding<Bool> {
         Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
+    }
+
+    private var noticeBinding: Binding<Bool> {
+        Binding(get: { installNotice != nil }, set: { if !$0 { installNotice = nil } })
     }
 
     // MARK: - IPA card
@@ -152,6 +158,8 @@ struct IPAsView: View {
                 } label: {
                     Text("Click me to delete the app")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
@@ -174,11 +182,19 @@ struct IPAsView: View {
 
     @ViewBuilder
     private func trailingControl(_ package: IPAPackage, isInstalled: Bool, isInstalling: Bool) -> some View {
+        trailingBody(package, isInstalled: isInstalled, isInstalling: isInstalling)
+            .frame(width: 108)
+    }
+
+    @ViewBuilder
+    private func trailingBody(_ package: IPAPackage, isInstalled: Bool, isInstalling: Bool) -> some View {
         if isInstalling {
             VStack(spacing: 6) {
                 Text("\(Int(progress * 100))%")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(VoltexTheme.orange)
                 ProgressView(value: progress)
                     .tint(VoltexTheme.orange)
@@ -194,6 +210,8 @@ struct IPAsView: View {
             } label: {
                 Text("Download")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(Color.black)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
@@ -203,60 +221,22 @@ struct IPAsView: View {
         }
     }
 
-    // MARK: - install source
-
-    private var sourceCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("INSTALL SOURCE")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .kerning(1.4)
-                .foregroundStyle(VoltexTheme.orange)
-
-            Text("Paste a signed-IPA manifest URL (the `.plist` an OTA side-loader serves). Download then hands it to iOS, which shows the real Install / Cancel prompt.")
-                .font(.footnote)
-                .foregroundStyle(VoltexTheme.secondary)
-
-            TextField("https://…/manifest.plist", text: $manifestURL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .focused($sourceFocused)
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundStyle(VoltexTheme.orange)
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
-                )
-
-            if manifestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("Empty → Download runs the demo install instead.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(VoltexTheme.secondary)
-            }
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
-                .fill(VoltexTheme.card)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
-                .stroke(VoltexTheme.hairline, lineWidth: 1)
-        )
-        .padding(.horizontal, 20)
-    }
-
     // MARK: - installing
 
     private func beginInstall(_ package: IPAPackage) {
         let trimmed = manifestURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let manifest = URL(string: trimmed),
+
+        guard !trimmed.isEmpty else {
+            installNotice = "No install source is set, so Voltex ran the demo install instead."
+            runDemoInstall(package)
+            return
+        }
+
+        guard let manifest = URL(string: trimmed),
               let encoded = manifest.absoluteString
                 .addingPercentEncoding(withAllowedCharacters: .alphanumerics),
-              let installURL = URL(string: "itms-services://?action=download-manifest&url=\(encoded)")
-        else {
+              let installURL = URL(string: "itms-services://?action=download-manifest&url=\(encoded)") else {
+            installNotice = "That install source isn't a valid link."
             runDemoInstall(package)
             return
         }
@@ -264,10 +244,11 @@ struct IPAsView: View {
         UIApplication.shared.open(installURL, options: [:]) { ok in
             DispatchQueue.main.async {
                 if ok {
-                    ToastCenter.shared.show("Handed to iOS — tap Install")
-                    runDemoInstall(package)
+                    HistoryStore.shared.add("Requested install of \(package.name)")
+                    installNotice = "Handed to iOS. If it ends with \u{201C}Unable to Install\u{201D}, the IPA isn't signed — Voltex can't sign it, only a certificate or your Apple ID can."
                 } else {
-                    ToastCenter.shared.show("iOS refused that install source")
+                    HistoryStore.shared.add("Install failed for \(package.name)")
+                    installNotice = "iOS refused the installer. Check that the manifest link is reachable."
                 }
             }
         }
@@ -285,6 +266,7 @@ struct IPAsView: View {
             }
             installed.insert(package.id)
             installing = nil
+            HistoryStore.shared.add("Installed \(package.name)")
             ToastCenter.shared.show("\(package.name) installed")
         }
     }
@@ -293,6 +275,7 @@ struct IPAsView: View {
         guard let package = pendingDelete else { return }
         installed.remove(package.id)
         pendingDelete = nil
+        HistoryStore.shared.add("Deleted \(package.name)")
         ToastCenter.shared.show("\(package.name) deleted")
     }
 
@@ -339,20 +322,6 @@ struct IPAsView: View {
                 .stroke(VoltexTheme.orange.opacity(0.35), lineWidth: 1)
         )
         .padding(.horizontal, 20)
-    }
-}
-
-extension View {
-    /// A "Done" button above the keyboard, everywhere.
-    func keyboardToolbar(focused: FocusState<Bool>.Binding) -> some View {
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused.wrappedValue = false }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(VoltexTheme.orange)
-            }
-        }
     }
 }
 

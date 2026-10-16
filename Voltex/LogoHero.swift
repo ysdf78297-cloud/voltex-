@@ -64,7 +64,7 @@ struct LetterWordmark: View {
 
     var body: some View {
         letterRow
-            .overlay(VoltexTheme.brandGradient)
+            .overlay(VoltexTheme.wordmarkGradient)
             .mask(letterRow)
             .scaleEffect(breathe ? 1.03 : 1.0)
             .shadow(color: VoltexTheme.purple.opacity(0.32), radius: 16, y: 5)

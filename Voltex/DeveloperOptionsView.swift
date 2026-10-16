@@ -251,6 +251,7 @@ struct DeveloperOptionsView: View {
     @AppStorage("voltexShowTaps") private var showTaps = false
     @AppStorage("voltexPointerLocation") private var pointerLocation = false
     @AppStorage("voltexLayoutBounds") private var layoutBounds = false
+    @AppStorage("showFakeMoneyTab") private var showFakeMoney = false
 
     @State private var path: [DevRoute] = []
 
@@ -292,6 +293,12 @@ struct DeveloperOptionsView: View {
 
                     AndroidSection("Battery") {
                         AndroidSwitchRow(title: "Stay awake while charging", isOn: $stayAwake)
+                    }
+
+                    AndroidSection("Extras") {
+                        AndroidSwitchRow(title: "Fake money test",
+                                         subtitle: "Adds the Fake Money tab",
+                                         isOn: $showFakeMoney)
                     }
 
                     AndroidFooter(text: "These switches are cosmetic. iOS doesn't expose Android's ADB bridge or a build number, so nothing here changes how your iPhone actually works.")
