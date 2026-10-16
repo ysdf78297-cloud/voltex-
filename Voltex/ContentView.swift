@@ -14,20 +14,29 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView(selection: $selection) {
-            IPAsView()
-                .tabItem { Label("IPA's", systemImage: "square.stack.3d.up.fill") }
-                .tag(0)
+        ZStack {
+            TabView(selection: $selection) {
+                IPAsView()
+                    .tabItem { Label("IPA's", systemImage: "square.stack.3d.up.fill") }
+                    .tag(0)
 
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                .tag(1)
+                SettingsView()
+                    .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                    .tag(1)
 
-            AboutView()
-                .tabItem { Label("About", systemImage: "info.circle.fill") }
-                .tag(2)
+                AboutView()
+                    .tabItem { Label("About", systemImage: "info.circle.fill") }
+                    .tag(2)
+            }
+            .tint(VoltexTheme.orange)
+
+            ShockwaveOverlay()
         }
-        .tint(VoltexTheme.orange)
+        .simultaneousGesture(
+            SpatialTapGesture().onEnded { value in
+                ShockwaveCenter.shared.spawn(at: value.location)
+            }
+        )
     }
 }
 

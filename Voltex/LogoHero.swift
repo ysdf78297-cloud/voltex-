@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// The logo + animated "Voltex" wordmark, orange with a purple shine.
+/// The logo + the "Voltex" wordmark, which types itself in letter by letter.
 struct LogoHero: View {
     @AppStorage("animationsEnabled") private var animationsEnabled = true
-
     @State private var floatUp = false
     @State private var glow = false
 
@@ -34,7 +33,7 @@ struct LogoHero: View {
             }
             .offset(y: floatUp ? -8 : 8)
 
-            ShimmerTitle(text: "Voltex")
+            LetterWordmark(text: "Voltex")
         }
         .onAppear(perform: start)
         .onChange(of: animationsEnabled) { _ in start() }
@@ -51,41 +50,62 @@ struct LogoHero: View {
     }
 }
 
-/// Gradient wordmark with a light sweeping across it.
-struct ShimmerTitle: View {
+/// Renders each letter of the word with its own pop-in, then breathes gently.
+/// The orange -> purple gradient spans the whole word.
+struct LetterWordmark: View {
     let text: String
-    @AppStorage("animationsEnabled") private var animationsEnabled = true
-    @State private var sweep: CGFloat = -1.2
 
-    private var font: Font { .system(size: 62, weight: .black, design: .rounded) }
+    @AppStorage("animationsEnabled") private var animationsEnabled = true
+    @State private var revealed = 0
+    @State private var breathe = false
+
+    private var letters: [Character] { Array(text) }
+    private var wordFont: Font { .system(size: 62, weight: .black, design: .rounded) }
 
     var body: some View {
-        Text(text)
-            .font(font)
-            .kerning(2)
-            .foregroundStyle(VoltexTheme.brandGradient)
-            .overlay(
-                GeometryReader { geo in
-                    LinearGradient(
-                        colors: [.clear, .white.opacity(0.95), .clear],
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                    .frame(width: geo.size.width * 0.40)
-                    .rotationEffect(.degrees(16))
-                    .offset(x: sweep * geo.size.width * 1.9)
-                    .blendMode(.plusLighter)
-                    .mask(Text(text).font(font).kerning(2))
-                    .opacity(animationsEnabled ? 1 : 0)
-                }
-            )
-            .shadow(color: VoltexTheme.purple.opacity(0.35), radius: 16, y: 5)
-            .onAppear(perform: start)
-            .onChange(of: animationsEnabled) { _ in start() }
+        letterRow
+            .overlay(VoltexTheme.brandGradient)
+            .mask(letterRow)
+            .scaleEffect(breathe ? 1.03 : 1.0)
+            .shadow(color: VoltexTheme.purple.opacity(0.32), radius: 16, y: 5)
+            .onAppear(perform: run)
+            .onChange(of: animationsEnabled) { _ in run() }
     }
 
-    private func start() {
-        guard animationsEnabled else { sweep = -1.2; return }
-        sweep = -1.2
-        withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) { sweep = 1.4 }
+    private var letterRow: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(letters.enumerated()), id: \.offset) { index, letter in
+                Text(String(letter))
+                    .font(wordFont)
+                    .kerning(2)
+                    .opacity(index < revealed ? 1 : 0)
+                    .scaleEffect(index < revealed ? 1 : 0.35, anchor: .bottom)
+                    .offset(y: index < revealed ? 0 : 24)
+            }
+        }
+    }
+
+    private func run() {
+        breathe = false
+
+        guard animationsEnabled else {
+            revealed = letters.count
+            return
+        }
+
+        revealed = 0
+        for index in letters.indices {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16 * Double(index) + 0.12) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) {
+                    revealed = max(revealed, index + 1)
+                }
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16 * Double(letters.count) + 0.45) {
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
     }
 }

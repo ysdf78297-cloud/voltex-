@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// Landing tab: the animated Voltex hero, then the IPA list (empty for now).
+/// Landing tab: the animated Voltex hero, the IPA list (empty for now),
+/// and the "Open any app, not IPA" launcher.
 struct IPAsView: View {
+    @State private var showLauncher = false
+
     var body: some View {
         ZStack {
             BlobBackground()
@@ -26,6 +29,8 @@ struct IPAsView: View {
                     emptyState
                         .padding(.top, 4)
 
+                    launcherCard
+
                     Text("Voltex")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
                         .kerning(3)
@@ -35,6 +40,9 @@ struct IPAsView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
+        }
+        .sheet(isPresented: $showLauncher) {
+            AppLauncherView()
         }
     }
 
@@ -56,15 +64,53 @@ struct IPAsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 34)
         .padding(.horizontal, 22)
-        .background(
-            RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
-                .fill(VoltexTheme.card)
-        )
+        .background(cardBackground)
+        .padding(.horizontal, 20)
+    }
+
+    private var launcherCard: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "bolt.horizontal.circle.fill")
+                .font(.system(size: 42))
+                .foregroundStyle(VoltexTheme.brandGradient)
+
+            Text("Open any app, not IPA")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+
+            Text("Secret apps you normally can't reach — jump straight in.")
+                .font(.footnote)
+                .foregroundStyle(VoltexTheme.secondary)
+                .multilineTextAlignment(.center)
+
+            Button {
+                showLauncher = true
+            } label: {
+                Text("View")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.black)
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, 11)
+                    .background(VoltexTheme.brandGradient)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 30)
+        .padding(.horizontal, 22)
+        .background(cardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
-                .stroke(VoltexTheme.hairline, lineWidth: 1)
+                .stroke(VoltexTheme.orange.opacity(0.35), lineWidth: 1)
         )
         .padding(.horizontal, 20)
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
+            .fill(VoltexTheme.card)
     }
 }
 

@@ -10,6 +10,7 @@ enum VoltexTheme {
     static let card       = Color(red: 1.000, green: 1.000, blue: 1.000).opacity(0.06)
     static let hairline   = Color.white.opacity(0.08)
     static let secondary  = Color(red: 0.720, green: 0.720, blue: 0.750)
+    static let star       = Color(red: 1.000, green: 0.953, blue: 0.910) // #FFF3E8
 
     /// Orange -> purple, used for the "Voltex" wordmark and headings.
     static let brandGradient = LinearGradient(
