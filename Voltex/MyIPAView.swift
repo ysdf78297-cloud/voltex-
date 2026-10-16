@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
@@ -29,7 +29,7 @@ final class IPAImageCache {
     func forget(_ name: String) { store.removeValue(forKey: name) }
 }
 
-/// "Your IPA" — pick an .ipa off your phone and Voltex pulls it in here.
+/// "Your IPA" â€” pick an .ipa off your phone and Voltex pulls it in here.
 struct MyIPAView: View {
     @State private var showPicker = false
     @State private var items: [SideloadedIPA] = []
@@ -54,7 +54,7 @@ struct MyIPAView: View {
                     header
                     chooserCard
                         .sheet(isPresented: $showCertificates) {
-                            CertificatesView()
+                            CertificateView(onClose: { showCertificates = false })
                         }
 
                     if let busyName {
@@ -135,8 +135,7 @@ struct MyIPAView: View {
                 installNotice = "Add a .p12 and a .mobileprovision first, then try again."
                 return
             }
-            HistoryStore.shared.add("Certificate install requested: \(item.name)")
-            installNotice = "Certificate ready (\(CertificateStore.shared.info?.name ?? "imported")). Voltex can't re-sign an IPA — sign it with ESign or Sideloadly, host the signed build, then Install will take it."
+            installNotice = "Certificate ready (\(CertificateStore.shared.info?.name ?? "imported")). Voltex can't re-sign an IPA â€” sign it with ESign or Sideloadly, host the signed build, then Install will take it."
             return
         }
 
@@ -152,7 +151,6 @@ struct MyIPAView: View {
 
         UIApplication.shared.open(installURL, options: [:]) { ok in
             DispatchQueue.main.async {
-                HistoryStore.shared.add("Requested install of \(item.name)")
                 installNotice = ok
                     ? "Handed to iOS. If it ends with \u{201C}Unable to Install\u{201D}, the IPA isn't signed."
                     : "iOS refused the installer."
@@ -357,7 +355,7 @@ struct MyIPAView: View {
         if let version = item.version { parts.append("v\(version)") }
         parts.append(ByteCountFormatter.string(fromByteCount: Int64(item.sizeBytes), countStyle: .file))
         if let bundleID = item.bundleID { parts.append(bundleID) }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " Â· ")
     }
 
     // MARK: - picking
@@ -451,7 +449,6 @@ struct MyIPAView: View {
                 save()
                 busyName = nil
                 busyProgress = 0
-                HistoryStore.shared.add("Sideloaded \(item.name)")
                 ToastCenter.shared.show("\(item.name) is ready")
             }
         }
@@ -468,7 +465,6 @@ struct MyIPAView: View {
 
         items.removeAll { $0.id == item.id }
         save()
-        HistoryStore.shared.add("Uninstalled \(item.name)")
         ToastCenter.shared.show("\(item.name) uninstalled")
         pendingDelete = nil
     }

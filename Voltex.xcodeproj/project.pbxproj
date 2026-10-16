@@ -21,10 +21,8 @@
 		BF0000000000000000000012 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000013 /* Notifications.swift */; };
 		BF0000000000000000000013 /* FakeMoneyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000014 /* FakeMoneyView.swift */; };
 		BF0000000000000000000014 /* DeveloperOptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000015 /* DeveloperOptionsView.swift */; };
-		BF0000000000000000000015 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000016 /* HistoryStore.swift */; };
 		BF0000000000000000000016 /* IPAReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000017 /* IPAReader.swift */; };
 		BF0000000000000000000017 /* MyIPAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000018 /* MyIPAView.swift */; };
-		BF0000000000000000000018 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000019 /* HistoryView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,10 +40,8 @@
 		FE0000000000000000000013 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
 		FE0000000000000000000014 /* FakeMoneyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeMoneyView.swift; sourceTree = "<group>"; };
 		FE0000000000000000000015 /* DeveloperOptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperOptionsView.swift; sourceTree = "<group>"; };
-		FE0000000000000000000016 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		FE0000000000000000000017 /* IPAReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPAReader.swift; sourceTree = "<group>"; };
 		FE0000000000000000000018 /* MyIPAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyIPAView.swift; sourceTree = "<group>"; };
-		FE0000000000000000000019 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		FE0000000000000000000010 /* Voltex.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Voltex.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -83,8 +79,6 @@
 				FE0000000000000000000015 /* DeveloperOptionsView.swift */,
 				FE0000000000000000000014 /* FakeMoneyView.swift */,
 				FE0000000000000000000013 /* Notifications.swift */,
-				FE0000000000000000000016 /* HistoryStore.swift */,
-				FE0000000000000000000019 /* HistoryView.swift */,
 				FE0000000000000000000017 /* IPAReader.swift */,
 				FE0000000000000000000018 /* MyIPAView.swift */,
 				FE0000000000000000000012 /* Toast.swift */,
@@ -181,10 +175,8 @@
 				BF0000000000000000000012 /* Notifications.swift in Sources */,
 				BF0000000000000000000013 /* FakeMoneyView.swift in Sources */,
 				BF0000000000000000000014 /* DeveloperOptionsView.swift in Sources */,
-				BF0000000000000000000015 /* HistoryStore.swift in Sources */,
 				BF0000000000000000000016 /* IPAReader.swift in Sources */,
 				BF0000000000000000000017 /* MyIPAView.swift in Sources */,
-				BF0000000000000000000018 /* HistoryView.swift in Sources */,
 				BF0000000000000000000002 /* ContentView.swift in Sources */,
 				BF0000000000000000000001 /* VoltexApp.swift in Sources */,
 			);

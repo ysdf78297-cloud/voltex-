@@ -28,9 +28,9 @@ struct ContentView: View {
                     .tabItem { Label("Your IPA", systemImage: "shippingbox.fill") }
                     .tag("youripa")
 
-                HistoryView()
-                    .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-                    .tag("history")
+                CertificateView()
+                    .tabItem { Label("Certificate", systemImage: "checkmark.seal.fill") }
+                    .tag("certificate")
 
                 if showFakeMoney {
                     FakeMoneyView()

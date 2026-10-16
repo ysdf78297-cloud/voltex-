@@ -1,6 +1,8 @@
-import SwiftUI
+﻿import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import Security
+import CryptoKit
 
 // MARK: - Android styling
 
@@ -128,7 +130,7 @@ struct AndroidSwitchRow: View {
     }
 }
 
-/// A toggle row whose text opens a sub-screen — exactly how Android does it.
+/// A toggle row whose text opens a sub-screen â€” exactly how Android does it.
 struct AndroidNavRow: View {
     let title: String
     var subtitle: String? = nil
@@ -334,13 +336,6 @@ struct DeveloperOptionsView: View {
                                          subtitle: "Import a .p12 and .mobileprovision",
                                          action: { showCertificates = true })
                         AndroidDivider()
-                        AndroidActionRow(title: "Clear history",
-                                         subtitle: "\(HistoryStore.shared.events.count) of 20 stored",
-                                         action: {
-                                             HistoryStore.shared.clear()
-                                             ToastCenter.shared.show("History cleared")
-                                         })
-                        AndroidDivider()
                         AndroidActionRow(title: "Copy device info",
                                          subtitle: "To the clipboard",
                                          action: copyDeviceInfo)
@@ -373,7 +368,7 @@ struct DeveloperOptionsView: View {
         }
         .preferredColorScheme(.light)
         .sheet(isPresented: $showCertificates) {
-            CertificatesView()
+            CertificateView(onClose: { showCertificates = false })
         }
         .onAppear {
             Notifier.requestPermission()
@@ -652,10 +647,50 @@ struct USBConfigurationView: View {
     }
 }
 
-// MARK: - Certificates
 
-/// Holds a signing certificate (.p12) and provisioning profile, and can read the
-/// profile's details back out. Stored in the app's own Documents folder.
+// MARK: - Certificate storage
+
+enum Keychain {
+    private static let service = "com.voltex.app"
+
+    static func set(_ value: String, for key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key
+        ]
+        SecItemDelete(query as CFDictionary)
+
+        var add = query
+        add[kSecValueData as String] = Data(value.utf8)
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
+    static func get(_ key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func remove(_ key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
 final class CertificateStore: ObservableObject {
     static let shared = CertificateStore()
 
@@ -675,10 +710,17 @@ final class CertificateStore: ObservableObject {
     private let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     private let p12Key = "voltexP12Name"
     private let profileKey = "voltexProfileName"
+    private let passwordKey = "voltexP12Password"
 
     private init() { load() }
 
     var hasCertificate: Bool { p12Name != nil && profileName != nil }
+
+    var password: String { Keychain.get(passwordKey) ?? "" }
+
+    func savePassword(_ value: String) {
+        if value.isEmpty { Keychain.remove(passwordKey) } else { Keychain.set(value, for: passwordKey) }
+    }
 
     func importP12(_ url: URL) {
         copy(url, prefix: "cert-") { name in
@@ -704,6 +746,7 @@ final class CertificateStore: ObservableObject {
         p12Name = nil
         profileName = nil
         info = nil
+        Keychain.remove(passwordKey)
         UserDefaults.standard.removeObject(forKey: p12Key)
         UserDefaults.standard.removeObject(forKey: profileKey)
         ToastCenter.shared.show("Certificate removed")
@@ -744,86 +787,486 @@ final class CertificateStore: ObservableObject {
         guard let plist = (try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil)) as? [String: Any]
         else { return nil }
 
+        let entitlements = plist["Entitlements"] as? [String: Any]
         return ProfileInfo(
             name: plist["Name"] as? String ?? "Unnamed",
             team: plist["TeamName"] as? String ?? "Unknown team",
             uuid: plist["UUID"] as? String ?? "-",
             expires: plist["ExpirationDate"] as? Date,
             deviceCount: (plist["ProvisionedDevices"] as? [String])?.count ?? 0,
-            appID: plist["Entitlements"].flatMap { ($0 as? [String: Any])?["application-identifier"] as? String } ?? "-"
+            appID: entitlements?["application-identifier"] as? String ?? "-"
         )
     }
 }
 
-struct CertificatesView: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var store = CertificateStore.shared
+// MARK: - Experimental key + certificate request generation
 
-    @State private var showP12Picker = false
-    @State private var showProfilePicker = false
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                AndroidPalette.background.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        AndroidSection("Signing certificate") {
-                            AndroidActionRow(title: store.p12Name == nil ? "Import .p12" : ".p12 imported",
-                                             subtitle: store.p12Name == nil ? "Tap to choose your certificate file" : "Tap to replace",
-                                             action: { showP12Picker = true })
-                            AndroidDivider()
-                            AndroidActionRow(title: store.profileName == nil ? "Import .mobileprovision" : ".mobileprovision imported",
-                                             subtitle: store.profileName == nil ? "Tap to choose your profile" : "Tap to replace",
-                                             action: { showProfilePicker = true })
-                        }
-
-                        if let info = store.info {
-                            AndroidSection("Profile") {
-                                AndroidInfoRow(title: "Name", value: info.name)
-                                AndroidDivider()
-                                AndroidInfoRow(title: "Team", value: info.team)
-                                AndroidDivider()
-                                AndroidInfoRow(title: "App ID", value: info.appID)
-                                AndroidDivider()
-                                AndroidInfoRow(title: "Devices", value: "\(info.deviceCount)")
-                                AndroidDivider()
-                                AndroidInfoRow(title: "Expires", value: info.expires.map { Self.formatter.string(from: $0) } ?? "unknown")
-                            }
-                        }
-
-                        AndroidSection("") {
-                            AndroidActionRow(title: "Remove certificate", action: { store.removeAll() })
-                        }
-
-                        AndroidFooter(text: "Voltex keeps your certificate here and reads your profile, but it cannot re-sign an IPA. Signing needs Apple's code-signing engine plus your private key, which is exactly what ESign/Scarlet ship. Voltex installs an IPA that is already signed — point it at a signed build and it will hand it to iOS.")
-                    }
-                    .padding(16)
-                    .padding(.bottom, 30)
-                }
-
-                AndroidToastHost()
-            }
-            .navigationTitle("Certificates")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(AndroidPalette.accent)
-                }
-            }
-            .fileImporter(isPresented: $showP12Picker, allowedContentTypes: [.data, .item]) { result in
-                if case .success(let url) = result { store.importP12(url) }
-            }
-            .fileImporter(isPresented: $showProfilePicker, allowedContentTypes: [.data, .item]) { result in
-                if case .success(let url) = result { store.importProfile(url) }
-            }
-        }
-        .preferredColorScheme(.light)
+enum CertificateFactory {
+    struct Output {
+        var pem: String
+        var keyDescription: String
+        var fingerprint: String
     }
 
-    private static let formatter: DateFormatter = {
+    /// Generates an RSA-2048 key pair in the Keychain and a PKCS#10 certificate
+    /// request (CSR) you could hand to Apple or a CA. Experimental: it makes the
+    /// request, not the certificate â€” only Apple or a CA can issue one.
+    static func makeRequest(commonName: String) -> Output? {
+        let tag = "com.voltex.csr.\(UUID().uuidString)".data(using: .utf8) ?? Data()
+
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecAttrKeySizeInBits as String: 2048,
+            kSecPrivateKeyAttrs as String: [
+                kSecAttrIsPermanent as String: true,
+                kSecAttrApplicationTag as String: tag
+            ]
+        ]
+
+        var error: Unmanaged<CFError>?
+        guard let privateKey = SecKeyCreateRandomKey(attributes as CFDictionary, &error),
+              let publicKey = SecKeyCopyPublicKey(privateKey),
+              let publicDER = SecKeyCopyExternalRepresentation(publicKey, &error) as Data?
+        else { return nil }
+
+        let subject = DER.sequence([
+            DER.set([
+                DER.sequence([
+                    DER.oid([0x55, 0x04, 0x03]),          // commonName
+                    DER.utf8(commonName)
+                ])
+            ])
+        ])
+
+        let algorithm = DER.sequence([
+            DER.oid([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]),  // rsaEncryption
+            DER.null()
+        ])
+
+        let publicKeyInfo = DER.sequence([
+            algorithm,
+            DER.bitString([UInt8](publicDER))
+        ])
+
+        let requestInfo = DER.sequence([
+            DER.integer(0),
+            subject,
+            publicKeyInfo,
+            DER.tagged(0xA0, [])                                   // no attributes
+        ])
+
+        let signatureAlgorithm = DER.sequence([
+            DER.oid([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B]),  // sha256WithRSA
+            DER.null()
+        ])
+
+        guard let signature = SecKeyCreateSignature(privateKey,
+                                                    .rsaSignatureMessagePKCS1v15SHA256,
+                                                    Data(requestInfo) as CFData,
+                                                    &error) as Data? else { return nil }
+
+        let request = DER.sequence([
+            requestInfo,
+            signatureAlgorithm,
+            DER.bitString([UInt8](signature))
+        ])
+
+        let base64 = Data(request).base64EncodedString(options: [.lineLength64Characters,
+                                                                 .endLineWithLineFeed])
+        let pem = "-----BEGIN CERTIFICATE REQUEST-----\n\(base64)\n-----END CERTIFICATE REQUEST-----"
+
+        let digest = SHA256.hash(data: publicDER)
+        let fingerprint = digest.prefix(8).map { String(format: "%02X", $0) }.joined(separator: ":")
+
+        return Output(pem: pem,
+                      keyDescription: "RSA 2048-bit, held in the app Keychain",
+                      fingerprint: fingerprint)
+    }
+}
+
+/// Tiny DER encoder â€” enough for a PKCS#10 request.
+enum DER {
+    static func length(_ value: Int) -> [UInt8] {
+        if value < 0x80 { return [UInt8(value)] }
+        var bytes: [UInt8] = []
+        var remaining = value
+        while remaining > 0 {
+            bytes.insert(UInt8(remaining & 0xFF), at: 0)
+            remaining >>= 8
+        }
+        return [0x80 | UInt8(bytes.count)] + bytes
+    }
+
+    static func tagged(_ tag: UInt8, _ content: [UInt8]) -> [UInt8] {
+        [tag] + length(content.count) + content
+    }
+
+    static func sequence(_ items: [[UInt8]]) -> [UInt8] { tagged(0x30, items.flatMap { $0 }) }
+    static func set(_ items: [[UInt8]]) -> [UInt8] { tagged(0x31, items.flatMap { $0 }) }
+    static func octetString(_ bytes: [UInt8]) -> [UInt8] { tagged(0x04, bytes) }
+    static func bitString(_ bytes: [UInt8]) -> [UInt8] { tagged(0x03, [0x00] + bytes) }
+    static func oid(_ bytes: [UInt8]) -> [UInt8] { tagged(0x06, bytes) }
+    static func utf8(_ string: String) -> [UInt8] { tagged(0x0C, Array(string.utf8)) }
+    static func null() -> [UInt8] { [0x05, 0x00] }
+
+    static func integer(_ value: Int) -> [UInt8] {
+        var bytes: [UInt8] = []
+        var remaining = value
+        if remaining == 0 { bytes = [0] }
+        while remaining > 0 {
+            bytes.insert(UInt8(remaining & 0xFF), at: 0)
+            remaining >>= 8
+        }
+        if let first = bytes.first, first & 0x80 != 0 { bytes.insert(0, at: 0) }
+        return tagged(0x02, bytes)
+    }
+}
+
+// MARK: - Certificate tab
+
+struct CertificateView: View {
+    var onClose: (() -> Void)? = nil
+
+    @ObservedObject private var store = CertificateStore.shared
+
+    @AppStorage("signingMethod") private var method = "install"
+    @State private var password = ""
+    @State private var showP12Picker = false
+    @State private var showProfilePicker = false
+    @State private var generated: CertificateFactory.Output?
+    @State private var working = false
+
+    private let methods: [(id: String, title: String, detail: String, icon: String)] = [
+        ("install", "Just install", "Hands the IPA straight to iOS. Works with an already-signed build.", "arrow.down.circle.fill"),
+        ("phone", "This iPhone (Apple ID)", "Uses the Apple ID this device is signed in with, the way a free sideload does.", "iphone.gen3"),
+        ("certificate", "Certificate (.p12)", "Signs with your own certificate and provisioning profile.", "checkmark.seal.fill")
+    ]
+
+    var body: some View {
+        ZStack {
+            BlobBackground()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 20) {
+                    header
+                    methodCard
+                    if method == "certificate" { certificateCard }
+                    if let info = store.info, method == "certificate" { profileCard(info) }
+                    experimentalCard
+
+                    Text("Voltex stores your details and reads your profile. It does not contain a code-signing engine, so it installs builds that are already signed.")
+                        .font(.footnote)
+                        .foregroundStyle(VoltexTheme.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 26)
+
+                    Button {
+                        if let onClose { onClose() }
+                    } label: {
+                        Text("Done")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Capsule().fill(VoltexTheme.brandGradient))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .opacity(onClose == nil ? 0 : 1)
+                    .disabled(onClose == nil)
+
+                    Spacer(minLength: 120)
+                }
+                .padding(.top, 24)
+            }
+        }
+        .onAppear { password = store.password }
+        .fileImporter(isPresented: $showP12Picker, allowedContentTypes: [.data, .item]) { result in
+            if case .success(let url) = result { store.importP12(url) }
+        }
+        .fileImporter(isPresented: $showProfilePicker, allowedContentTypes: [.data, .item]) { result in
+            if case .success(let url) = result { store.importProfile(url) }
+        }
+    }
+
+    // MARK: pieces
+
+    private var header: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(VoltexTheme.brandGradient)
+
+            Text("Certificate")
+                .font(.system(size: 32, weight: .black, design: .rounded))
+                .foregroundStyle(VoltexTheme.brandGradient)
+
+            Text("Choose what Voltex signs with")
+                .font(.subheadline)
+                .foregroundStyle(VoltexTheme.secondary)
+        }
+    }
+
+    private var methodCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(methods.enumerated()), id: \.offset) { index, option in
+                Button {
+                    method = option.id
+                    ToastCenter.shared.show(option.title)
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: option.icon)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(VoltexTheme.brandGradient)
+                            )
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(option.title)
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white)
+                            Text(option.detail)
+                                .font(.system(size: 11))
+                                .foregroundStyle(VoltexTheme.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        if method == option.id {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(VoltexTheme.orange)
+                        }
+                    }
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if index < methods.count - 1 { divider }
+            }
+        }
+        .padding(.horizontal, 16)
+        .background(cardBackground)
+        .overlay(cardBorder)
+        .padding(.horizontal, 20)
+    }
+
+    private var certificateCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { showP12Picker = true } label: {
+                rowLabel(title: store.p12Name == nil ? "Import .p12" : ".p12 imported",
+                         value: store.p12Name == nil ? "choose" : "replace",
+                         subtitle: "Your signing certificate")
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            Button { showProfilePicker = true } label: {
+                rowLabel(title: store.profileName == nil ? "Import .mobileprovision" : ".mobileprovision imported",
+                         value: store.profileName == nil ? "choose" : "replace",
+                         subtitle: "Your provisioning profile")
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Password")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.white)
+                    Text("For the .p12, kept in the Keychain")
+                        .font(.system(size: 11))
+                        .foregroundStyle(VoltexTheme.secondary)
+                }
+                Spacer(minLength: 12)
+                SecureField("â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢", text: $password)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(VoltexTheme.orange)
+                    .frame(maxWidth: 150)
+                    .onChange(of: password) { newValue in store.savePassword(newValue) }
+            }
+            .padding(.vertical, 14)
+
+            if store.hasCertificate {
+                divider
+                Button { store.removeAll(); password = "" } label: {
+                    Text("Remove certificate")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .background(cardBackground)
+        .overlay(cardBorder)
+        .padding(.horizontal, 20)
+    }
+
+    private func profileCard(_ info: CertificateStore.ProfileInfo) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("YOUR PROFILE")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .kerning(1.4)
+                .foregroundStyle(VoltexTheme.orange)
+                .padding(.bottom, 10)
+
+            infoRow("Name", info.name)
+            divider
+            infoRow("Team", info.team)
+            divider
+            infoRow("App ID", info.appID)
+            divider
+            infoRow("Devices", "\(info.deviceCount)")
+            divider
+            infoRow("Expires", info.expires.map { Self.dateFormatter.string(from: $0) } ?? "unknown")
+        }
+        .padding(16)
+        .background(cardBackground)
+        .overlay(cardBorder)
+        .padding(.horizontal, 20)
+    }
+
+    private var experimentalCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("CREATE CERTIFICATE")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .kerning(1.4)
+                    .foregroundStyle(VoltexTheme.orange)
+
+                Text("EXPERIMENTAL")
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .kerning(1)
+                    .foregroundStyle(Color.black)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(VoltexTheme.orange))
+            }
+
+            Text("Makes an RSA-2048 key in the Keychain and a certificate request (CSR). Only Apple or a CA can turn that request into a real certificate â€” this just does your half.")
+                .font(.system(size: 12))
+                .foregroundStyle(VoltexTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                working = true
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let output = CertificateFactory.makeRequest(commonName: "Voltex \(DeviceInfo.modelName)")
+                    DispatchQueue.main.async {
+                        working = false
+                        generated = output
+                        ToastCenter.shared.show(output == nil ? "Couldn't generate" : "Certificate request created")
+                    }
+                }
+            } label: {
+                Text(working ? "Workingâ€¦" : "Generate key + certificate request")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(Color.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Capsule().fill(VoltexTheme.brandGradient))
+            }
+            .buttonStyle(.plain)
+            .disabled(working)
+
+            if let generated {
+                divider
+                infoRow("Key", generated.keyDescription)
+                divider
+                infoRow("Fingerprint", generated.fingerprint)
+
+                Text(generated.pem)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(VoltexTheme.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    )
+
+                Button {
+                    UIPasteboard.general.string = generated.pem
+                    ToastCenter.shared.show("Certificate request copied")
+                } label: {
+                    Text("Copy request")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Capsule().fill(VoltexTheme.orange))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(cardBackground)
+        .overlay(cardBorder)
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: helpers
+
+    private var divider: some View {
+        Rectangle().fill(VoltexTheme.hairline).frame(height: 1)
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
+            .fill(VoltexTheme.card)
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: VoltexTheme.corner, style: .continuous)
+            .stroke(VoltexTheme.hairline, lineWidth: 1)
+    }
+
+    private func rowLabel(title: String, value: String, subtitle: String) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(VoltexTheme.secondary)
+            }
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.system(size: 14))
+                .foregroundStyle(VoltexTheme.orange)
+        }
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+    }
+
+    private func infoRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .top) {
+            Text(title)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.system(size: 13))
+                .foregroundStyle(VoltexTheme.secondary)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, 12)
+    }
+
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
         return f
