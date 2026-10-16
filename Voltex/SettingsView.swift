@@ -55,10 +55,9 @@ struct SettingsView: View {
                         divider
                         buildRow
                         divider
-                        row("Bundle ID", bundleID)
-                        divider
-                        row("Developer", isDeveloper ? "You are a developer" : "You're not a developer",
-                            valueColor: isDeveloper ? VoltexTheme.orange : VoltexTheme.secondary)
+                        row("Bundle ID",
+                            isDeveloper ? bundleID : "You need to be a developer to see this",
+                            valueColor: isDeveloper ? VoltexTheme.secondary : VoltexTheme.orange)
                         divider
                         row("Theme", "Orange / Black")
                     }

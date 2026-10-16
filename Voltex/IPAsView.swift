@@ -20,7 +20,8 @@ struct IPAsView: View {
     @State private var pendingDelete: IPAPackage?
 
     @FocusState private var sourceFocused: Bool
-    @AppStorage("ipaManifestURL") private var manifestURL = ""
+    @AppStorage("ipaManifestURL") private var manifestURL =
+        "https://raw.githubusercontent.com/ysdf78297-cloud/voltex-/main/ipa/manifest.plist"
 
     private let packages: [IPAPackage] = [
         IPAPackage(id: "charlie",
@@ -73,12 +74,12 @@ struct IPAsView: View {
             .alert("Install \(pendingInstall?.name ?? "")?",
                    isPresented: installConfirmBinding,
                    presenting: pendingInstall) { package in
-                Button("Cancel", role: .cancel) { pendingInstall = nil }
                 Button("Install") {
                     let target = package
                     pendingInstall = nil
                     beginInstall(target)
                 }
+                Button("Cancel") { pendingInstall = nil }
             } message: { package in
                 Text("iOS will ask you to confirm, the same as any sideload.")
             }
@@ -88,8 +89,8 @@ struct IPAsView: View {
         }
         .keyboardToolbar(focused: $sourceFocused)
         .alert("Are you sure?", isPresented: deleteConfirmBinding) {
-            Button("No", role: .cancel) { pendingDelete = nil }
             Button("Yes", role: .destructive) { confirmDelete() }
+            Button("No") { pendingDelete = nil }
         } message: {
             Text("This will delete the app from your phone.")
         }
