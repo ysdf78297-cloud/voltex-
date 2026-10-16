@@ -814,10 +814,10 @@ struct CertificatesView: View {
                 }
             }
             .fileImporter(isPresented: $showP12Picker, allowedContentTypes: [.data, .item]) { result in
-                if case .success(let urls) = result, let url = urls.first { store.importP12(url) }
+                if case .success(let url) = result { store.importP12(url) }
             }
             .fileImporter(isPresented: $showProfilePicker, allowedContentTypes: [.data, .item]) { result in
-                if case .success(let urls) = result, let url = urls.first { store.importProfile(url) }
+                if case .success(let url) = result { store.importProfile(url) }
             }
         }
         .preferredColorScheme(.light)
