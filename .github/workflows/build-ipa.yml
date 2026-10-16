@@ -5,6 +5,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   build:
     name: Build unsigned Voltex.ipa
@@ -13,23 +17,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Xcode version
-        run: xcodebuild -version
-
       - name: Build the app (unsigned)
         run: |
-          xcodebuild \
-            -project Voltex.xcodeproj \
-            -scheme Voltex \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
+          set -o pipefail
+          {
+            echo "===== xcodebuild -version ====="
+            xcodebuild -version
+            echo "===== xcodebuild -list ====="
+            xcodebuild -project Voltex.xcodeproj -list
+            echo "===== build ====="
+            xcodebuild \
+              -project Voltex.xcodeproj \
+              -scheme Voltex \
+              -configuration Release \
+              -sdk iphoneos \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              build
+          } 2>&1 | tee build.log
+
+      - name: Add build log to job summary
+        if: always()
+        run: |
+          {
+            echo '## Build log (tail)'
+            echo '```'
+            tail -c 15000 build.log 2>/dev/null || echo "(no build.log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package as .ipa
+        if: success()
         run: |
           set -e
           APP="build/Build/Products/Release-iphoneos/Voltex.app"
@@ -41,8 +61,25 @@ jobs:
           ls -lh Voltex.ipa
 
       - name: Upload IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Voltex-ipa
           path: Voltex.ipa
           if-no-files-found: error
+
+      - name: Report failure in an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo '```'
+            tail -c 12000 build.log 2>/dev/null || echo "(no build.log)"
+            echo '```'
+          } > report.md
+          gh issue create --repo "${{ github.repository }}" \
+            --title "Build failed (run ${{ github.run_number }})" \
+            --body-file report.md || true
