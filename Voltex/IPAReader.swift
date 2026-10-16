@@ -43,10 +43,17 @@ enum IPAReader {
             result.version = plist["CFBundleShortVersionString"] as? String
         }
 
-        let icons = entries.filter { $0.name.hasSuffix(".png") && $0.name.contains("AppIcon") }
-        let best = icons.max { $0.uncompressedSize < $1.uncompressedSize }
-        if let best, let data = extract(best, handle: handle) {
-            result.icon = UIImage(data: data)
+        // Icons are usually loose AppIcon*.png files; if not, fall back to anything
+        // called *icon*, then to the biggest PNG in the bundle.
+        let pngs = entries.filter { $0.name.lowercased().hasSuffix(".png") }
+        let appIcons = pngs.filter { $0.name.lowercased().contains("appicon") }
+        let anyIcons = pngs.filter { $0.name.lowercased().contains("icon") }
+        let pool = !appIcons.isEmpty ? appIcons : (!anyIcons.isEmpty ? anyIcons : pngs)
+
+        if let best = pool.max(by: { $0.uncompressedSize < $1.uncompressedSize }),
+           let data = extract(best, handle: handle),
+           let image = UIImage(data: data) {
+            result.icon = image
         }
 
         return result
@@ -182,5 +189,105 @@ enum IPAReader {
             | (UInt32(bytes[i + 1]) << 8)
             | (UInt32(bytes[i + 2]) << 16)
             | (UInt32(bytes[i + 3]) << 24)
+    }
+}
+
+/// Writes a real .zip (stored, no compression) — used to export generated files.
+enum ZipWriter {
+    static func archive(_ files: [(name: String, data: Data)]) -> Data? {
+        guard !files.isEmpty else { return nil }
+
+        var output = Data()
+        var central = Data()
+        var offset = 0
+
+        for file in files {
+            let nameBytes = Array(file.name.utf8)
+            let checksum = crc32(file.data)
+            let size = UInt32(file.data.count)
+
+            var local = Data()
+            local.append(uint32(0x04034b50))
+            local.append(uint16(20))
+            local.append(uint16(0))
+            local.append(uint16(0))          // stored
+            local.append(uint16(0))
+            local.append(uint16(0))
+            local.append(uint32(checksum))
+            local.append(uint32(size))
+            local.append(uint32(size))
+            local.append(uint16(UInt16(nameBytes.count)))
+            local.append(uint16(0))
+            local.append(contentsOf: nameBytes)
+            local.append(file.data)
+
+            output.append(local)
+
+            var entry = Data()
+            entry.append(uint32(0x02014b50))
+            entry.append(uint16(20))
+            entry.append(uint16(20))
+            entry.append(uint16(0))
+            entry.append(uint16(0))
+            entry.append(uint16(0))
+            entry.append(uint16(0))
+            entry.append(uint32(checksum))
+            entry.append(uint32(size))
+            entry.append(uint32(size))
+            entry.append(uint16(UInt16(nameBytes.count)))
+            entry.append(uint16(0))
+            entry.append(uint16(0))
+            entry.append(uint16(0))
+            entry.append(uint16(0))
+            entry.append(uint32(0))
+            entry.append(uint32(UInt32(offset)))
+            entry.append(contentsOf: nameBytes)
+            central.append(entry)
+
+            offset += local.count
+        }
+
+        let centralOffset = UInt32(offset)
+        output.append(central)
+
+        var end = Data()
+        end.append(uint32(0x06054b50))
+        end.append(uint16(0))
+        end.append(uint16(0))
+        end.append(uint16(UInt16(files.count)))
+        end.append(uint16(UInt16(files.count)))
+        end.append(uint32(UInt32(central.count)))
+        end.append(uint32(centralOffset))
+        end.append(uint16(0))
+        output.append(end)
+
+        return output
+    }
+
+    private static let table: [UInt32] = (0..<256).map { index in
+        var value = UInt32(index)
+        for _ in 0..<8 {
+            value = (value & 1) != 0 ? (0xEDB8_8320 ^ (value >> 1)) : (value >> 1)
+        }
+        return value
+    }
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        var value: UInt32 = 0xFFFF_FFFF
+        for byte in data {
+            value = table[Int((value ^ UInt32(byte)) & 0xFF)] ^ (value >> 8)
+        }
+        return value ^ 0xFFFF_FFFF
+    }
+
+    private static func uint16(_ value: UInt16) -> Data {
+        Data([UInt8(value & 0xFF), UInt8((value >> 8) & 0xFF)])
+    }
+
+    private static func uint32(_ value: UInt32) -> Data {
+        Data([UInt8(value & 0xFF),
+              UInt8((value >> 8) & 0xFF),
+              UInt8((value >> 16) & 0xFF),
+              UInt8((value >> 24) & 0xFF)])
     }
 }

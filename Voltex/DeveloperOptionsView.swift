@@ -934,6 +934,7 @@ struct CertificateView: View {
     @State private var showP12Picker = false
     @State private var showProfilePicker = false
     @State private var generated: CertificateFactory.Output?
+    @State private var zipURL: URL?
     @State private var working = false
 
     private let methods: [(id: String, title: String, detail: String, icon: String)] = [
@@ -1162,9 +1163,11 @@ struct CertificateView: View {
                 working = true
                 DispatchQueue.global(qos: .userInitiated).async {
                     let output = CertificateFactory.makeRequest(commonName: "Voltex \(DeviceInfo.modelName)")
+                    let url = output.flatMap { Self.writeArchive($0) }
                     DispatchQueue.main.async {
                         working = false
                         generated = output
+                        zipURL = url
                         ToastCenter.shared.show(output == nil ? "Couldn't generate" : "Certificate request created")
                     }
                 }
@@ -1197,18 +1200,32 @@ struct CertificateView: View {
                             .fill(Color.white.opacity(0.05))
                     )
 
-                Button {
-                    UIPasteboard.general.string = generated.pem
-                    ToastCenter.shared.show("Certificate request copied")
-                } label: {
-                    Text("Copy request")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Capsule().fill(VoltexTheme.orange))
+                HStack(spacing: 10) {
+                    Button {
+                        UIPasteboard.general.string = generated.pem
+                        ToastCenter.shared.show("Certificate request copied")
+                    } label: {
+                        Text("Copy")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(VoltexTheme.orange))
+                    }
+                    .buttonStyle(.plain)
+
+                    if let zipURL {
+                        ShareLink(item: zipURL) {
+                            Text("Download .zip")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Capsule().fill(VoltexTheme.orangeDeep))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(16)
@@ -1271,4 +1288,100 @@ struct CertificateView: View {
         f.dateStyle = .medium
         return f
     }()
+
+    /// Zips the generated request so it can be saved out of the app.
+    private static func writeArchive(_ output: CertificateFactory.Output) -> URL? {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+
+        let info = """
+        Voltex — certificate request
+        Generated: \(Date())
+        Key: \(output.keyDescription)
+        Fingerprint: \(output.fingerprint)
+        """
+        let readme = """
+        HOW TO USE THIS
+        1. Send certificate-request.csr to Apple (developer.apple.com) or a certificate authority.
+        2. They return a signed certificate (.cer / .p12).
+        3. Import that .p12 back into Voltex, along with a .mobileprovision.
+
+        The private key that matches this request never leaves the device.
+        """
+
+        guard let data = ZipWriter.archive([
+            ("certificate-request.csr", Data(output.pem.utf8)),
+            ("info.txt", Data(info.utf8)),
+            ("README.txt", Data(readme.utf8))
+        ]) else { return nil }
+
+        let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("CertificateExports", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let url = folder.appendingPathComponent("voltex-certificate-\(stamp).zip")
+        do {
+            try data.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+    }
+}
+
+// MARK: - Signing method (applies everywhere)
+
+enum SigningMethod: String {
+    case install
+    case phone
+    case certificate
+
+    var title: String {
+        switch self {
+        case .install:     return "Just install"
+        case .phone:       return "This iPhone (Apple ID)"
+        case .certificate: return "Certificate (.p12)"
+        }
+    }
+}
+
+/// One place every Install button goes through, so the method chosen in the
+/// Certificate tab applies to all of them.
+enum InstallCoordinator {
+    static let defaultManifest =
+        "https://raw.githubusercontent.com/ysdf78297-cloud/voltex-/main/ipa/manifest.plist"
+
+    static var method: SigningMethod {
+        SigningMethod(rawValue: UserDefaults.standard.string(forKey: "signingMethod") ?? "install")
+            ?? .install
+    }
+
+    static var manifestURL: String {
+        let stored = UserDefaults.standard.string(forKey: "ipaManifestURL") ?? ""
+        return stored.isEmpty ? defaultManifest : stored
+    }
+
+    /// Hands the manifest to iOS, which shows its own Install prompt.
+    static func install(name: String, completion: @escaping (String) -> Void) {
+        if method == .certificate && !CertificateStore.shared.hasCertificate {
+            completion("No certificate yet — open the Certificate tab and import a .p12 and .mobileprovision.")
+            return
+        }
+
+        guard let manifest = URL(string: manifestURL),
+              let encoded = manifest.absoluteString
+                .addingPercentEncoding(withAllowedCharacters: .alphanumerics),
+              let installURL = URL(string: "itms-services://?action=download-manifest&url=\(encoded)") else {
+            completion("The install source isn't a valid link.")
+            return
+        }
+
+        UIApplication.shared.open(installURL, options: [:]) { ok in
+            DispatchQueue.main.async {
+                completion(ok
+                    ? "Installing \(name) using \(method.title). If iOS ends with \u{201C}Unable to Install\u{201D}, the IPA isn't signed for this device."
+                    : "iOS refused the installer.")
+            }
+        }
+    }
 }

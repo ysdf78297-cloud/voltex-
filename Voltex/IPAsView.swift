@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 import UIKit
 
 struct IPAPackage: Identifiable {
@@ -21,8 +21,7 @@ struct IPAsView: View {
     @State private var installNotice: String?
     @State private var showCertificates = false
 
-    @AppStorage("ipaManifestURL") private var manifestURL =
-        "https://raw.githubusercontent.com/ysdf78297-cloud/voltex-/main/ipa/manifest.plist"
+
 
     private let packages: [IPAPackage] = [
         IPAPackage(id: "charlie",
@@ -81,14 +80,9 @@ struct IPAsView: View {
                     pendingInstall = nil
                     beginInstall(target)
                 }
-                Button("Install with certificate") {
-                    let target = package
-                    pendingInstall = nil
-                    beginCertificateInstall(target)
-                }
                 Button("Cancel", role: .cancel) { pendingInstall = nil }
             } message: { package in
-                Text("Install hands the IPA to iOS. Install with certificate uses the signing identity you imported.")
+                Text("Signing with \(InstallCoordinator.method.title). Change that in the Certificate tab.")
             }
         }
         .sheet(isPresented: $showLauncher) {
@@ -233,58 +227,8 @@ struct IPAsView: View {
     // MARK: - installing
 
     private func beginInstall(_ package: IPAPackage) {
-        let trimmed = manifestURL.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmed.isEmpty else {
-            installNotice = "No install source is set, so Voltex ran the demo install instead."
-            runDemoInstall(package)
-            return
-        }
-
-        guard let manifest = URL(string: trimmed),
-              let encoded = manifest.absoluteString
-                .addingPercentEncoding(withAllowedCharacters: .alphanumerics),
-              let installURL = URL(string: "itms-services://?action=download-manifest&url=\(encoded)") else {
-            installNotice = "That install source isn't a valid link."
-            runDemoInstall(package)
-            return
-        }
-
-        UIApplication.shared.open(installURL, options: [:]) { ok in
-            DispatchQueue.main.async {
-                if ok {
-                    installNotice = "Handed to iOS. If it ends with \u{201C}Unable to Install\u{201D}, the IPA isn't signed â€” Voltex can't sign it, only a certificate or your Apple ID can."
-                } else {
-                    installNotice = "iOS refused the installer. Check that the manifest link is reachable."
-                }
-            }
-        }
-    }
-
-    private func beginCertificateInstall(_ package: IPAPackage) {
-        guard CertificateStore.shared.hasCertificate else {
-            showCertificates = true
-            installNotice = "Add a .p12 and a .mobileprovision first, then try again."
-            return
-        }
-
-        let name = CertificateStore.shared.info?.name ?? "imported"
-        installNotice = "Certificate ready (\(name)). Voltex can't re-sign an IPA â€” that needs Apple's code-signing engine and your private key. Sign the build with ESign or Sideloadly, host the signed IPA, and Install will take it from there."
-    }
-
-    private func runDemoInstall(_ package: IPAPackage) {
-        guard installing == nil else { return }
-        installing = package.id
-        progress = 0
-
-        Task { @MainActor in
-            while progress < 1 {
-                try? await Task.sleep(nanoseconds: 120_000_000)
-                progress = min(1, progress + Double.random(in: 0.012...0.05))
-            }
-            installed.insert(package.id)
-            installing = nil
-            ToastCenter.shared.show("\(package.name) installed")
+        InstallCoordinator.install(name: package.name) { message in
+            installNotice = message
         }
     }
 

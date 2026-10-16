@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
@@ -40,9 +40,6 @@ struct MyIPAView: View {
     @State private var installNotice: String?
     @State private var showCertificates = false
 
-    @AppStorage("ipaManifestURL") private var manifestURL =
-        "https://raw.githubusercontent.com/ysdf78297-cloud/voltex-/main/ipa/manifest.plist"
-
     private let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
     var body: some View {
@@ -73,16 +70,12 @@ struct MyIPAView: View {
                                             isPresented: installOptionsBinding,
                                             titleVisibility: .visible) {
                             Button("Install") {
-                                if let item = pendingInstall { install(item, withCertificate: false) }
-                                pendingInstall = nil
-                            }
-                            Button("Install with certificate") {
-                                if let item = pendingInstall { install(item, withCertificate: true) }
+                                if let item = pendingInstall { install(item) }
                                 pendingInstall = nil
                             }
                             Button("Cancel", role: .cancel) { pendingInstall = nil }
                         } message: {
-                            Text("Install hands the IPA to iOS. Install with certificate uses the signing identity you imported.")
+                            Text("Signing with \(InstallCoordinator.method.title). Change that in the Certificate tab.")
                         }
                     }
 
@@ -128,33 +121,9 @@ struct MyIPAView: View {
         Binding(get: { installNotice != nil }, set: { if !$0 { installNotice = nil } })
     }
 
-    private func install(_ item: SideloadedIPA, withCertificate: Bool) {
-        if withCertificate {
-            guard CertificateStore.shared.hasCertificate else {
-                showCertificates = true
-                installNotice = "Add a .p12 and a .mobileprovision first, then try again."
-                return
-            }
-            installNotice = "Certificate ready (\(CertificateStore.shared.info?.name ?? "imported")). Voltex can't re-sign an IPA â€” sign it with ESign or Sideloadly, host the signed build, then Install will take it."
-            return
-        }
-
-        let trimmed = manifestURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let manifest = URL(string: trimmed),
-              let encoded = manifest.absoluteString
-                .addingPercentEncoding(withAllowedCharacters: .alphanumerics),
-              let installURL = URL(string: "itms-services://?action=download-manifest&url=\(encoded)") else {
-            installNotice = "No install source is set. Add one on the IPA's tab."
-            return
-        }
-
-        UIApplication.shared.open(installURL, options: [:]) { ok in
-            DispatchQueue.main.async {
-                installNotice = ok
-                    ? "Handed to iOS. If it ends with \u{201C}Unable to Install\u{201D}, the IPA isn't signed."
-                    : "iOS refused the installer."
-            }
+    private func install(_ item: SideloadedIPA) {
+        InstallCoordinator.install(name: item.name) { message in
+            installNotice = message
         }
     }
 
